@@ -68,6 +68,8 @@ android/app/build/
 android/.gradle/
 android/local.properties
 android/app/release.keystore
+release.keystore
+release.keystore.base64.txt
 
 # Yarn Integrity file
 .yarn-integrity
