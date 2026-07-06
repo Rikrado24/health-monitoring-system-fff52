@@ -26,6 +26,13 @@ import {
   predictHealthStatus,
   saveHealthPredictionForUser,
 } from "../services/healthPrediction";
+import {
+  formatLocalDate,
+  formatLocalDateTime,
+  formatLocalTime,
+  formatLocalWeekdayDate,
+  formatLocalDayMonth,
+} from "../services/dateTime";
 import PageContainer from "./ui/PageContainer";
 import AppCard from "./ui/AppCard";
 import PrimaryButton from "./ui/PrimaryButton";
@@ -167,11 +174,7 @@ const formatBirthDateLabel = (value: string) => {
   if (!value) return "-";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  return formatLocalDate(parsed, value);
 };
 
 const withUnitOrDash = (value: string, unit: string) => {
@@ -508,7 +511,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     frequency: "Setiap hari",
     category: "Kesehatan" as ReminderDoc["category"],
   });
-  const [syncTime, setSyncTime] = useState("21 Mei 2024, 08:30");
+  const [syncTime, setSyncTime] = useState(() => formatLocalDateTime(new Date()));
   const [deviceLastSeenAt, setDeviceLastSeenAt] = useState("");
   const [language, setLanguage] = useState("Bahasa Indonesia");
   const [theme, setTheme] = useState<"Terang" | "Gelap" | "Sistem">(() => {
@@ -637,7 +640,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
           ? Number((Number(latestMeasurement.berat_badan) / Math.pow(Number(latestMeasurement.tinggi_badan) / 100, 2)).toFixed(1))
           : 0;
   const dashboardBmiRecordedAt = latestMeasurement?.tanggal_pengukuran
-    ? new Date(latestMeasurement.tanggal_pengukuran).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })
+    ? formatLocalDateTime(latestMeasurement.tanggal_pengukuran)
     : "";
   const displayedSystolic = manualSystolic.trim();
   const displayedDiastolic = manualDiastolic.trim();
@@ -809,12 +812,20 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
         ? weeklyCalories
         : weekly;
   const trendMax = Math.max(...trendSeries, 1);
-  const weekLabels = ["15 Mei", "16 Mei", "17 Mei", "18 Mei", "19 Mei", "20 Mei", "21 Mei"];
+  const weekLabels = Array.from({ length: 7 }, (_, index) => {
+    const sample = new Date(deviceNow);
+    sample.setDate(sample.getDate() - (6 - index));
+    return formatLocalDayMonth(sample);
+  });
   const weekMax = Math.max(...weekly, 1);
   const formatActivityFinishedAt = (isoString: string) => {
-    const date = new Date(isoString);
-    if (Number.isNaN(date.getTime())) return isoString || "-";
-    return date.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+    return formatLocalDateTime(isoString, isoString || "-");
+  };
+  const formatSampleDateTime = (daysAgo: number, hour: number, minute: number) => {
+    const sample = new Date(deviceNow);
+    sample.setDate(sample.getDate() - daysAgo);
+    sample.setHours(hour, minute, 0, 0);
+    return formatLocalDateTime(sample);
   };
   const getActivityIntensityLevel = (session: { motion_label: string; speed_avg_mps: number; source: "gps" | "fallback" }) => {
     const label = String(session.motion_label || "").toLowerCase();
@@ -825,9 +836,9 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   };
 
   const activityRows = [
-    ["🚶", "Jalan Pagi", "21 Mei 2024, 07:30", hasAnyData ? "5.2 km" : "-", hasAnyData ? "45 menit" : "-", hasAnyData ? "312 kcal" : "-"],
-    ["🚴", "Bersepeda", "20 Mei 2024, 16:15", hasAnyData ? "12.4 km" : "-", hasAnyData ? "1j 08m" : "-", hasAnyData ? "560 kcal" : "-"],
-    ["🏃", "Jalan Santai", "19 Mei 2024, 08:45", hasAnyData ? "3.1 km" : "-", hasAnyData ? "30 menit" : "-", hasAnyData ? "150 kcal" : "-"],
+    ["🚶", "Jalan Pagi", formatSampleDateTime(0, 7, 30), hasAnyData ? "5.2 km" : "-", hasAnyData ? "45 menit" : "-", hasAnyData ? "312 kcal" : "-"],
+    ["🚴", "Bersepeda", formatSampleDateTime(1, 16, 15), hasAnyData ? "12.4 km" : "-", hasAnyData ? "1j 08m" : "-", hasAnyData ? "560 kcal" : "-"],
+    ["🏃", "Jalan Santai", formatSampleDateTime(2, 8, 45), hasAnyData ? "3.1 km" : "-", hasAnyData ? "30 menit" : "-", hasAnyData ? "150 kcal" : "-"],
   ];
 
   const reminderRows = [
@@ -1082,15 +1093,15 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     ["fa-check", "Selesai Hari Ini", String(reminderLogs.filter((log) => log.status === "Selesai").length), reminderLogs.length > 0 ? "Pengingat selesai" : "Belum ada selesai", "violet"],
   ];
   const staticHistoryRows = [
-    ["21 Mei 2024, 08:30", "Tekanan Darah", hasBloodPressure ? `${bloodPressure} mmHg` : "-", "Tekanan", bpStatus, "Diastolik 80", "Lihat"],
-    ["21 Mei 2024, 08:30", "Detak Jantung", hasHeartRate ? `${heartRate} bpm` : "-", "Jantung", hrStatus, "Sebelum aktivitas", "Lihat"],
-    ["21 Mei 2024, 08:30", "Berat Badan", hasWeight ? `${weight} kg` : "-", "Berat", hasWeight ? "Normal" : "-", "Pagi hari", "Lihat"],
-    ["21 Mei 2024, 08:30", "Tinggi Badan", hasHeight ? `${height} cm` : "-", "Tinggi", hasHeight ? "Normal" : "-", "Profil", "Lihat"],
-    ["21 Mei 2024, 08:30", "Aktivitas", hasSteps ? `${steps.toLocaleString("id-ID")} langkah` : "-", "Aktivitas", hasSteps ? "Baik" : "-", "Target 10.000", "Lihat"],
-    ["21 Mei 2024, 08:30", "Pola Makan", hasMealData ? `${totalMealCalories.toLocaleString("id-ID")} kkal` : "-", "Nutrisi", hasMealData ? "Baik" : "-", "Catatan harian", "Lihat"],
+    [formatSampleDateTime(0, 8, 30), "Tekanan Darah", hasBloodPressure ? `${bloodPressure} mmHg` : "-", "Tekanan", bpStatus, "Diastolik 80", "Lihat"],
+    [formatSampleDateTime(0, 8, 30), "Detak Jantung", hasHeartRate ? `${heartRate} bpm` : "-", "Jantung", hrStatus, "Sebelum aktivitas", "Lihat"],
+    [formatSampleDateTime(0, 8, 30), "Berat Badan", hasWeight ? `${weight} kg` : "-", "Berat", hasWeight ? "Normal" : "-", "Pagi hari", "Lihat"],
+    [formatSampleDateTime(0, 8, 30), "Tinggi Badan", hasHeight ? `${height} cm` : "-", "Tinggi", hasHeight ? "Normal" : "-", "Profil", "Lihat"],
+    [formatSampleDateTime(0, 8, 30), "Aktivitas", hasSteps ? `${steps.toLocaleString("id-ID")} langkah` : "-", "Aktivitas", hasSteps ? "Baik" : "-", "Target 10.000", "Lihat"],
+    [formatSampleDateTime(0, 8, 30), "Pola Makan", hasMealData ? `${totalMealCalories.toLocaleString("id-ID")} kkal` : "-", "Nutrisi", hasMealData ? "Baik" : "-", "Catatan harian", "Lihat"],
   ];
   const storedHistoryRows = measurementHistoryDb.flatMap((entry) => {
-    const timestamp = new Date(entry.tanggal_pengukuran).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+    const timestamp = formatLocalDateTime(entry.tanggal_pengukuran);
     const sourceLabel = entry.sumber_data === "esp32_s3" ? "ESP32-S3 UNO" : entry.sumber_data === "web_manual" ? "Web Manual" : entry.sumber_data === "web_sync" ? "Sinkronisasi Web" : "Aplikasi";
     const bpValue = `${entry.sistolik}/${entry.diastolik}`;
     const bpState = entry.sistolik < 90 || entry.diastolik < 60 ? "Rendah" : entry.sistolik <= 129 && entry.diastolik <= 84 ? "Normal" : entry.sistolik <= 139 || entry.diastolik <= 89 ? "Waspada" : "Tinggi";
@@ -1103,7 +1114,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   });
   const measurementHistoryRows = measurementHistoryDb.map((entry) => ({
     ...entry,
-    timestamp: new Date(entry.tanggal_pengukuran).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }),
+    timestamp: formatLocalDateTime(entry.tanggal_pengukuran),
   }));
   const activityHistoryRowsForExport = activitySessionDocs.filter((session) => isMeaningfulActivitySession(session)).map((session) => {
     const timestamp = formatActivityFinishedAt(session.finished_at);
@@ -1128,7 +1139,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const historyEventRows = historyEventDocs
     .filter((entry) => !shouldHideHistoryEventFromTimeline(entry))
     .map((entry) => [
-      new Date(entry.occurredAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }),
+      formatLocalDateTime(entry.occurredAt),
       entry.dataType,
       entry.value,
       entry.category,
@@ -1261,13 +1272,8 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const activeReminderCount = activeReminders.filter((item) => reminderEnabled[item.title]).length;
   const completedReminderCount = reminderLogs.filter((log) => log.status === "Selesai").length;
   const notificationCount = activeReminderCount;
-  const headerDateText = deviceNow.toLocaleDateString("id-ID", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
-  const headerTimeText = deviceNow.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  const headerDateText = formatLocalWeekdayDate(deviceNow);
+  const headerTimeText = formatLocalTime(deviceNow);
   const profileHeightText = profile.height || (height > 0 ? String(height) : "");
   const profileWeightText = profile.weight || (weight > 0 ? String(weight) : "");
   const profileDetails = [
@@ -1715,7 +1721,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
 
         const seenAt = presence.lastSeenAt;
         setDeviceLastSeenAt(seenAt);
-        setSyncTime(new Date(seenAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }));
+        setSyncTime(formatLocalDateTime(seenAt));
       },
       (error) => {
         const code = String((error as { code?: string })?.code || "");
@@ -1793,7 +1799,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
               });
               const seenAt = row.createdAt || new Date().toISOString();
               setDeviceLastSeenAt(seenAt);
-              setSyncTime(new Date(seenAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }));
+              setSyncTime(formatLocalDateTime(seenAt));
               await markDeviceStreamEntryConsumed(deviceIdentity.deviceId, row.id, userUid);
             }
           } finally {
@@ -2113,7 +2119,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
           });
           if (newest.sumber_data === "esp32_s3") {
             setDeviceLastSeenAt(newest.tanggal_pengukuran);
-            setSyncTime(new Date(newest.tanggal_pengukuran).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }));
+            setSyncTime(formatLocalDateTime(newest.tanggal_pengukuran));
           }
         }
         if (linkedDevice?.deviceId) {
@@ -2188,7 +2194,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
         });
         if (newest.sumber_data === "esp32_s3") {
           setDeviceLastSeenAt(newest.tanggal_pengukuran);
-          setSyncTime(new Date(newest.tanggal_pengukuran).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }));
+          setSyncTime(formatLocalDateTime(newest.tanggal_pengukuran));
         }
       },
       (error) => {
@@ -2633,7 +2639,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       distanceKm: 0,
       calories: 0,
       durationSec: 0,
-      startedAt: new Date(startedAtIso).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }),
+      startedAt: formatLocalDateTime(startedAtIso),
       startedAtIso,
       type: activityType,
     });
@@ -2666,7 +2672,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     }));
     setIsActivityRunning(false);
     if (finalizedSession.durationSec > 0) {
-      const finishedAt = new Date(finishedAtIso).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+      const finishedAt = formatLocalDateTime(finishedAtIso);
       const distanceMeters = Math.max(0, Math.round(finalizedSession.distanceKm * 1000));
       const avgSpeed = finalizedSession.durationSec > 0 ? distanceMeters / finalizedSession.durationSec : 0;
       setActivityHistory((rows) => [
@@ -2754,7 +2760,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
         summary: "ESP32-S3 UNO menyuplai tinggi dan berat badan. Tekanan darah dan detak jantung tetap memakai input manual dari web.",
         recommendations: current.recommendations.length > 0 ? current.recommendations : ["Pastikan sensor tinggi/berat stabil", "Isi tensi dari Omron di web", "Isi detak jantung manual bila tersedia"],
       }));
-      setSyncTime(new Date().toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }));
+      setSyncTime(formatLocalDateTime(new Date()));
       const bp = parseBloodPressure(manualBloodPressure);
       const generated = {
         tinggi_badan: latestDeviceHeight,
@@ -2799,7 +2805,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
 
   const saveManualMeasurement = async () => {
     try {
-      const savedAtLabel = new Date().toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+      const savedAtLabel = formatLocalDateTime(new Date());
       setManualSavedAt(savedAtLabel);
 
       if (userUid && storageReady) {
@@ -2932,7 +2938,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9.5);
     doc.setTextColor(71, 85, 105);
-    doc.text(`Tanggal ekspor: ${new Date().toLocaleString("id-ID")}`, marginX, y);
+    doc.text(`Tanggal ekspor: ${formatLocalDateTime(new Date())}`, marginX, y);
     y += 5;
     doc.text(`Filter: ${context?.filterLabel || normalizedHistoryFilter}`, marginX, y);
     y += 7;
@@ -3264,7 +3270,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       },
     ]);
     setMealDraft((current) => ({ ...current, foodKey: food.key }));
-    setMealSavedAt(new Date().toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }));
+    setMealSavedAt(formatLocalDateTime(new Date()));
     await appendHistoryEvents([
       {
         occurredAt: new Date().toISOString(),
@@ -3285,7 +3291,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       notify("Tambahkan jumlah air minum terlebih dahulu.");
       return;
     }
-    setMealSavedAt(new Date().toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }));
+    setMealSavedAt(formatLocalDateTime(new Date()));
     await appendHistoryEvents([
       {
         occurredAt: new Date().toISOString(),
@@ -3307,7 +3313,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       notify("Tulis catatan pola makan terlebih dahulu.");
       return;
     }
-    setMealSavedAt(new Date().toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }));
+    setMealSavedAt(formatLocalDateTime(new Date()));
     await appendHistoryEvents([
       {
         occurredAt: new Date().toISOString(),
@@ -4315,7 +4321,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
 
                         <div>
                           <p className="mb-1.5 text-[13px] font-bold text-slate-600">Waktu Pengukuran</p>
-                          <input className="w-full rounded-2xl border border-[#dfe6ea] bg-white px-4 py-3 text-[14px] font-medium text-slate-700" value="21 Mei 2024, 08:30" readOnly />
+                          <input className="w-full rounded-2xl border border-[#dfe6ea] bg-white px-4 py-3 text-[14px] font-medium text-slate-700" value={syncTime} readOnly />
                         </div>
 
                         <div>

@@ -1,10 +1,17 @@
 {
-  "name": "SehatAI",
-  "short_name": "SehatAI",
+  "name": "Health Monitoring System",
+  "short_name": "HMS",
   "description": "Health Monitoring System",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f6faf9",
   "theme_color": "#06965f",
-  "icons": []
+  "icons": [
+    {
+      "src": "/assets/logo-web.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
 }

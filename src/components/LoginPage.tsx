@@ -21,7 +21,13 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
           <aside className="relative overflow-hidden border-b border-[#e6efe9] bg-[linear-gradient(155deg,#0b3e33_0%,#136b55_38%,#6fc39b_115%)] p-5 text-white lg:min-h-[660px] lg:border-b-0 lg:border-r lg:p-8">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.18),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(250,231,182,0.2),transparent_24%)]" />
             <div className="relative z-10">
-              <p className="text-xs font-black uppercase tracking-[0.34em] text-emerald-100">Health Monitoring</p>
+              <div className="flex items-center gap-3">
+                <img src="/assets/logo-web.png" alt="Logo Health Monitoring System" className="h-14 w-14 rounded-2xl bg-white/10 object-cover shadow-[0_18px_30px_-18px_rgba(0,0,0,0.5)]" />
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.34em] text-emerald-100">Health Monitoring</p>
+                  <p className="mt-1 text-sm font-semibold text-white/90">Sistem pemantauan kesehatan</p>
+                </div>
+              </div>
               <h1 className="mt-5 max-w-[420px] text-[30px] font-black leading-[1.06] lg:text-[44px]">
                 Login Google dulu, lalu kita siapkan akun Anda.
               </h1>

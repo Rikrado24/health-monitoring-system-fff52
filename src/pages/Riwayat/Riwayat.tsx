@@ -238,7 +238,9 @@ function RiwayatContent({
   const filteredMeasurementRows = useMemo(
     () =>
       measurementHistoryRows.filter((row) => {
-        const date = row.tanggal_pengukuran ? new Date(row.tanggal_pengukuran) : null;
+        const date = row.tanggal_pengukuran
+          ? parseHistoryDate(row.tanggal_pengukuran) || new Date(row.tanggal_pengukuran)
+          : null;
         return isWithinHistoryRange(date && !Number.isNaN(date.getTime()) ? date : null, historyRange);
       }),
     [historyRange, measurementHistoryRows]
