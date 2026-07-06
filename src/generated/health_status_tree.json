@@ -1,0 +1,389 @@
+{
+  "model_name": "Decision Tree Health Classifier",
+  "algorithm": "DecisionTreeClassifier",
+  "features": [
+    "age",
+    "gender",
+    "height_cm",
+    "weight_kg",
+    "bmi",
+    "heart_rate",
+    "systolic_bp",
+    "diastolic_bp",
+    "steps"
+  ],
+  "target": "health_status",
+  "class_labels": {
+    "0": "Sehat",
+    "1": "Perlu Perhatian",
+    "2": "Risiko Tinggi"
+  },
+  "tree": {
+    "type": "node",
+    "feature": "steps",
+    "threshold": 4287.0,
+    "samples": 720,
+    "left": {
+      "type": "node",
+      "feature": "steps",
+      "threshold": 3224.5,
+      "samples": 300,
+      "left": {
+        "type": "node",
+        "feature": "systolic_bp",
+        "threshold": 80.5,
+        "samples": 183,
+        "left": {
+          "type": "leaf",
+          "samples": 4,
+          "value": [
+            0,
+            0,
+            1
+          ],
+          "prediction": 2,
+          "label": "Risiko Tinggi",
+          "probabilities": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "right": {
+          "type": "leaf",
+          "samples": 179,
+          "value": [
+            0,
+            0,
+            1
+          ],
+          "prediction": 2,
+          "label": "Risiko Tinggi",
+          "probabilities": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        }
+      },
+      "right": {
+        "type": "node",
+        "feature": "bmi",
+        "threshold": 29.6,
+        "samples": 117,
+        "left": {
+          "type": "node",
+          "feature": "bmi",
+          "threshold": 16.9,
+          "samples": 84,
+          "left": {
+            "type": "leaf",
+            "samples": 20,
+            "value": [
+              0,
+              0,
+              1
+            ],
+            "prediction": 2,
+            "label": "Risiko Tinggi",
+            "probabilities": [
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "right": {
+            "type": "node",
+            "feature": "weight_kg",
+            "threshold": 38.549999,
+            "samples": 64,
+            "left": {
+              "type": "leaf",
+              "samples": 5,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "prediction": 2,
+              "label": "Risiko Tinggi",
+              "probabilities": [
+                0.0,
+                0.204082,
+                0.795918
+              ]
+            },
+            "right": {
+              "type": "leaf",
+              "samples": 59,
+              "value": [
+                0,
+                1,
+                0
+              ],
+              "prediction": 1,
+              "label": "Perlu Perhatian",
+              "probabilities": [
+                0.0,
+                1.0,
+                0.0
+              ]
+            }
+          }
+        },
+        "right": {
+          "type": "leaf",
+          "samples": 33,
+          "value": [
+            0,
+            0,
+            1
+          ],
+          "prediction": 2,
+          "label": "Risiko Tinggi",
+          "probabilities": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        }
+      }
+    },
+    "right": {
+      "type": "node",
+      "feature": "bmi",
+      "threshold": 24.55,
+      "samples": 420,
+      "left": {
+        "type": "node",
+        "feature": "bmi",
+        "threshold": 18.5,
+        "samples": 287,
+        "left": {
+          "type": "node",
+          "feature": "steps",
+          "threshold": 7130.0,
+          "samples": 48,
+          "left": {
+            "type": "node",
+            "feature": "bmi",
+            "threshold": 17.25,
+            "samples": 34,
+            "left": {
+              "type": "leaf",
+              "samples": 5,
+              "value": [
+                0,
+                1,
+                0
+              ],
+              "prediction": 1,
+              "label": "Perlu Perhatian",
+              "probabilities": [
+                0.0,
+                1.0,
+                0.0
+              ]
+            },
+            "right": {
+              "type": "leaf",
+              "samples": 29,
+              "value": [
+                0,
+                1,
+                0
+              ],
+              "prediction": 1,
+              "label": "Perlu Perhatian",
+              "probabilities": [
+                0.0,
+                1.0,
+                0.0
+              ]
+            }
+          },
+          "right": {
+            "type": "node",
+            "feature": "bmi",
+            "threshold": 17.8,
+            "samples": 14,
+            "left": {
+              "type": "leaf",
+              "samples": 9,
+              "value": [
+                0,
+                1,
+                0
+              ],
+              "prediction": 1,
+              "label": "Perlu Perhatian",
+              "probabilities": [
+                0.0,
+                1.0,
+                0.0
+              ]
+            },
+            "right": {
+              "type": "leaf",
+              "samples": 5,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "prediction": 1,
+              "label": "Perlu Perhatian",
+              "probabilities": [
+                0.38806,
+                0.61194,
+                0.0
+              ]
+            }
+          }
+        },
+        "right": {
+          "type": "node",
+          "feature": "heart_rate",
+          "threshold": 93.0,
+          "samples": 239,
+          "left": {
+            "type": "leaf",
+            "samples": 235,
+            "value": [
+              1,
+              0,
+              0
+            ],
+            "prediction": 0,
+            "label": "Sehat",
+            "probabilities": [
+              1.0,
+              0.0,
+              0.0
+            ]
+          },
+          "right": {
+            "type": "leaf",
+            "samples": 4,
+            "value": [
+              0,
+              1,
+              0
+            ],
+            "prediction": 1,
+            "label": "Perlu Perhatian",
+            "probabilities": [
+              0.0,
+              1.0,
+              0.0
+            ]
+          }
+        }
+      },
+      "right": {
+        "type": "node",
+        "feature": "steps",
+        "threshold": 8815.0,
+        "samples": 133,
+        "left": {
+          "type": "node",
+          "feature": "steps",
+          "threshold": 6346.0,
+          "samples": 131,
+          "left": {
+            "type": "node",
+            "feature": "weight_kg",
+            "threshold": 56.5,
+            "samples": 69,
+            "left": {
+              "type": "leaf",
+              "samples": 3,
+              "value": [
+                0,
+                1,
+                0
+              ],
+              "prediction": 1,
+              "label": "Perlu Perhatian",
+              "probabilities": [
+                0.0,
+                1.0,
+                0.0
+              ]
+            },
+            "right": {
+              "type": "leaf",
+              "samples": 66,
+              "value": [
+                0,
+                1,
+                0
+              ],
+              "prediction": 1,
+              "label": "Perlu Perhatian",
+              "probabilities": [
+                0.0,
+                1.0,
+                0.0
+              ]
+            }
+          },
+          "right": {
+            "type": "node",
+            "feature": "bmi",
+            "threshold": 24.95,
+            "samples": 62,
+            "left": {
+              "type": "leaf",
+              "samples": 18,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "prediction": 1,
+              "label": "Perlu Perhatian",
+              "probabilities": [
+                0.267857,
+                0.732143,
+                0.0
+              ]
+            },
+            "right": {
+              "type": "leaf",
+              "samples": 44,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "prediction": 1,
+              "label": "Perlu Perhatian",
+              "probabilities": [
+                0.043333,
+                0.956667,
+                0.0
+              ]
+            }
+          }
+        },
+        "right": {
+          "type": "leaf",
+          "samples": 2,
+          "value": [
+            1,
+            0,
+            0
+          ],
+          "prediction": 0,
+          "label": "Sehat",
+          "probabilities": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    }
+  }
+}

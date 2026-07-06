@@ -1,0 +1,188 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function hasOnlyAllowedKeys(data, allowed) {
+      return data.keys().hasOnly(allowed);
+    }
+
+    function validSumberData(value) {
+      return value in ['web_manual', 'web_sync', 'esp32_s3', 'app_mobile'];
+    }
+
+    function validPengukuranFields(data) {
+      return hasOnlyAllowedKeys(data, [
+        'tinggi_badan','berat_badan','detak_jantung','sistolik','diastolik',
+        'langkah_kaki','pola_makan','tanggal_pengukuran','sumber_data','createdAt','serverCreatedAt'
+      ]) &&
+      data.tinggi_badan is number &&
+      data.berat_badan is number &&
+      data.detak_jantung is number &&
+      data.sistolik is number &&
+      data.diastolik is number &&
+      data.langkah_kaki is number &&
+      data.pola_makan is string &&
+      data.tanggal_pengukuran is string &&
+      data.createdAt is string &&
+      validSumberData(data.sumber_data);
+    }
+
+    function validUserProfileCreate(data) {
+      return hasOnlyAllowedKeys(data, [
+        'nama','email','username','username_lower','umur','jenis_kelamin','createdAt',
+        'tanggal_lahir','golongan_darah','no_telepon','lokasi','tinggi_badan','berat_badan','updatedAt'
+      ]) &&
+      data.nama is string &&
+      data.email is string &&
+      (!('username' in data) || data.username is string) &&
+      (!('username_lower' in data) || data.username_lower is string) &&
+      data.umur is number &&
+      data.jenis_kelamin is string &&
+      data.createdAt is string &&
+      (!('tanggal_lahir' in data) || data.tanggal_lahir is string) &&
+      (!('golongan_darah' in data) || data.golongan_darah is string) &&
+      (!('no_telepon' in data) || data.no_telepon is string) &&
+      (!('lokasi' in data) || data.lokasi is string) &&
+      (!('tinggi_badan' in data) || data.tinggi_badan is number) &&
+      (!('berat_badan' in data) || data.berat_badan is number);
+    }
+
+    function validUserProfileUpdate(data) {
+      return hasOnlyAllowedKeys(data, [
+        'nama','email','username','username_lower','umur','jenis_kelamin','createdAt',
+        'tanggal_lahir','golongan_darah','no_telepon','lokasi','tinggi_badan','berat_badan','updatedAt'
+      ]) &&
+      (!('nama' in data) || data.nama is string) &&
+      (!('email' in data) || data.email is string) &&
+      (!('username' in data) || data.username is string) &&
+      (!('username_lower' in data) || data.username_lower is string) &&
+      (!('umur' in data) || data.umur is number) &&
+      (!('jenis_kelamin' in data) || data.jenis_kelamin is string) &&
+      (!('createdAt' in data) || data.createdAt is string) &&
+      (!('tanggal_lahir' in data) || data.tanggal_lahir is string) &&
+      (!('golongan_darah' in data) || data.golongan_darah is string) &&
+      (!('no_telepon' in data) || data.no_telepon is string) &&
+      (!('lokasi' in data) || data.lokasi is string) &&
+      (!('tinggi_badan' in data) || data.tinggi_badan is number) &&
+      (!('berat_badan' in data) || data.berat_badan is number) &&
+      (!('updatedAt' in data) || data.updatedAt is string);
+    }
+
+    function validHealthPrediction(data) {
+      return hasOnlyAllowedKeys(data, [
+        'age','gender','height_cm','weight_kg','bmi','heart_rate','systolic_bp','diastolic_bp','steps',
+        'predicted_status','predicted_status_label','recommendation','model_name','model_accuracy',
+        'model_algorithm','confidence','created_at'
+      ]) &&
+      data.age is number &&
+      data.gender is number &&
+      data.height_cm is number &&
+      data.weight_kg is number &&
+      data.bmi is number &&
+      data.heart_rate is number &&
+      data.systolic_bp is number &&
+      data.diastolic_bp is number &&
+      data.steps is number &&
+      data.predicted_status is number &&
+      data.predicted_status_label is string &&
+      data.recommendation is string &&
+      data.model_name is string &&
+      data.model_accuracy is number &&
+      data.model_algorithm is string &&
+      data.confidence is number &&
+      data.created_at is string;
+    }
+
+    function validDeviceLink(data) {
+      return hasOnlyAllowedKeys(data, [
+        'uid','deviceId','userCode','qrCodeId','userName','updatedAt','serverUpdatedAt'
+      ]) &&
+      data.uid is string &&
+      data.updatedAt is string &&
+      (!('deviceId' in data) || data.deviceId is string) &&
+      (!('userCode' in data) || data.userCode is string) &&
+      (!('qrCodeId' in data) || data.qrCodeId is string) &&
+      (!('userName' in data) || data.userName is string);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && validUserProfileCreate(request.resource.data);
+      allow update: if isOwner(userId) && validUserProfileUpdate(request.resource.data);
+      allow delete: if isOwner(userId);
+
+      match /pengukuran/{docId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && validPengukuranFields(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      match /measurements/{docId} {
+        allow read, create, update, delete: if isOwner(userId);
+      }
+
+      match /activities/{docId} {
+        allow read, create, update, delete: if isOwner(userId);
+      }
+
+      match /meals/{docId} {
+        allow read, create, update, delete: if isOwner(userId);
+      }
+
+      match /educationRecommendations/{docId} {
+        allow read, create, update, delete: if isOwner(userId);
+      }
+
+      match /reminders/{docId} {
+        allow read, create, update, delete: if isOwner(userId);
+      }
+
+      match /health_predictions/{docId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && validHealthPrediction(request.resource.data);
+        allow update: if isOwner(userId) && validHealthPrediction(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    match /device_links/{code} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid && validDeviceLink(request.resource.data);
+      allow update: if isSignedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid && validDeviceLink(request.resource.data);
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /usernames/{usernameLower} {
+      allow read: if true;
+      allow create: if isSignedIn() &&
+        hasOnlyAllowedKeys(request.resource.data, ['uid','email','username','username_lower','updatedAt']) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.username_lower == usernameLower &&
+        request.resource.data.username_lower is string &&
+        request.resource.data.username is string &&
+        request.resource.data.email is string &&
+        request.resource.data.updatedAt is string;
+      allow update: if isSignedIn() &&
+        resource.data.uid == request.auth.uid &&
+        hasOnlyAllowedKeys(request.resource.data, ['uid','email','username','username_lower','updatedAt']) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.username_lower == usernameLower &&
+        request.resource.data.username_lower is string &&
+        request.resource.data.username is string &&
+        request.resource.data.email is string &&
+        request.resource.data.updatedAt is string;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "sehatai-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5500",
+    "build": "tsc -b && vite build",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:copy": "npm run build && npx cap copy android",
+    "android:open": "npx cap open android",
+    "deploy": "npm run build && npx -y firebase-tools@latest deploy --only hosting",
+    "deploy:functions": "npx -y firebase-tools@latest deploy --only functions",
+    "deploy:all": "npm run build && npx -y firebase-tools@latest deploy --only hosting,functions",
+    "deploy:preview": "npm run build && npx -y firebase-tools@latest hosting:channel:deploy sidang --expires 7d",
+    "deploy:rules": "npx -y firebase-tools@latest deploy --only firestore:rules,database",
+    "preview": "vite preview --host 0.0.0.0 --port 5500"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "firebase": "^12.14.0",
+    "jspdf": "^4.2.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^6.0.2",
+    "firebase-tools": "^15.19.0",
+    "typescript": "^5.5.4",
+    "vite": "^8.0.13"
+  }
+}

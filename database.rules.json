@@ -1,0 +1,69 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "pengukuran": {
+          "$entryId": {
+            ".validate": "newData.hasChildren(['tanggal_pengukuran','sumber_data','createdAt']) && newData.child('sumber_data').isString() && (newData.child('sumber_data').val() == 'web_manual' || newData.child('sumber_data').val() == 'web_sync' || newData.child('sumber_data').val() == 'esp32_s3' || newData.child('sumber_data').val() == 'app_mobile')"
+          }
+        },
+        "activities": {
+          "$entryId": {
+            ".validate": "newData.hasChildren(['started_at','finished_at','duration_sec','distance_m','speed_avg_mps','motion_label','langkah','kalori','source','createdAt'])"
+          }
+        },
+        "reminders": {
+          "$entryId": {
+            ".validate": "newData.hasChildren(['title','description','time','frequency','category','isEnabled','createdAt','updatedAt'])"
+          }
+        },
+        "history_events": {
+          "$entryId": {
+            ".validate": "newData.hasChildren(['occurredAt','dataType','value','category','status','note','actionLabel','source','createdAt'])"
+          }
+        },
+        "doctor_chat": {
+          "$entryId": {
+            ".validate": "newData.hasChildren(['role','text','createdAt'])"
+          }
+        }
+      }
+    },
+    "device_links": {
+      ".indexOn": ["uid"],
+      ".read": "auth != null && query.orderByChild === 'uid' && query.equalTo === auth.uid",
+      "$code": {
+        ".read": "auth != null && data.child('uid').val() === auth.uid",
+        ".write": "auth != null && newData.child('uid').val() === auth.uid && (!data.exists() || data.child('uid').val() === auth.uid)",
+        ".validate": "newData.hasChildren(['uid','deviceId','userCode','qrCodeId','userName','writeKey','updatedAt']) && newData.child('uid').isString() && newData.child('updatedAt').isString() && (!newData.child('deviceId').exists() || newData.child('deviceId').isString()) && (!newData.child('userCode').exists() || newData.child('userCode').isString()) && (!newData.child('qrCodeId').exists() || newData.child('qrCodeId').isString()) && (!newData.child('userName').exists() || newData.child('userName').isString()) && (!newData.child('writeKey').exists() || newData.child('writeKey').isString())"
+      }
+    },
+    "device_display": {
+      "$deviceId": {
+        ".read": true,
+        ".write": "auth != null && root.child('device_links/' + $deviceId + '/uid').val() === auth.uid",
+        ".validate": "newData.hasChildren(['deviceId','userName','requestedAt']) && newData.child('deviceId').isString() && newData.child('deviceId').val() == $deviceId && newData.child('userName').isString() && newData.child('userName').val().length <= 32 && newData.child('requestedAt').isString()"
+      }
+    },
+    "device_presence": {
+      "$deviceId": {
+        ".read": "auth != null && root.child('device_links/' + $deviceId + '/uid').val() === auth.uid",
+        ".write": "(auth != null && root.child('device_links/' + $deviceId + '/uid').val() === auth.uid) || (newData.hasChildren(['deviceId','writeKey','lastSeenAt','status']) && newData.child('deviceId').isString() && newData.child('deviceId').val() == $deviceId && newData.child('writeKey').isString() && root.child('device_links/' + $deviceId + '/writeKey').val() == newData.child('writeKey').val())",
+        ".validate": "newData.hasChildren(['deviceId','writeKey','lastSeenAt','status']) && newData.child('deviceId').isString() && newData.child('deviceId').val() == $deviceId && newData.child('writeKey').isString() && newData.child('lastSeenAt').isString() && newData.child('status').isString() && (!newData.child('ipAddress').exists() || newData.child('ipAddress').isString()) && (!newData.child('userName').exists() || newData.child('userName').isString())"
+      }
+    },
+    "device_stream": {
+      "$deviceId": {
+        ".read": "auth != null && root.child('device_links/' + $deviceId + '/uid').val() === auth.uid",
+        "$entryId": {
+          ".write": "(auth != null && root.child('device_links/' + $deviceId + '/uid').val() === auth.uid) || (newData.hasChildren(['deviceId','writeKey','height','createdAt']) && newData.child('deviceId').isString() && newData.child('deviceId').val() == $deviceId && newData.child('writeKey').isString() && root.child('device_links/' + $deviceId + '/writeKey').val() == newData.child('writeKey').val())",
+          ".validate": "newData.hasChildren(['deviceId','writeKey','height','createdAt'])"
+        }
+      }
+    },
+    ".read": false,
+    ".write": false
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "configurations": [
+    {
+      "name": "ESP32-S3 Arduino",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "C:/Users/USER/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.7/**",
+        "C:/Users/USER/AppData/Local/Arduino15/packages/esp32/tools/esp32-arduino-libs/**",
+        "C:/Users/USER/OneDrive/Documents/Arduino/libraries/LiquidCrystal_I2C/**",
+        "C:/Users/USER/OneDrive/Documents/Arduino/libraries/HX711/**",
+        "C:/Users/USER/OneDrive/Documents/Arduino/libraries/HX711_Arduino_Library/src/**"
+      ],
+      "defines": [
+        "ARDUINO=10819",
+        "ARDUINO_ARCH_ESP32",
+        "ARDUINO_ESP32S3_DEV",
+        "ESP32",
+        "CONFIG_IDF_TARGET_ESP32S3"
+      ],
+      "compilerPath": "C:/Users/USER/AppData/Local/Arduino15/packages/esp32/tools/esp-x32/2601/bin/xtensa-esp32s3-elf-g++.exe",
+      "cStandard": "c11",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "windows-gcc-x64",
+      "browse": {
+        "path": [
+          "${workspaceFolder}",
+          "C:/Users/USER/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.7",
+          "C:/Users/USER/OneDrive/Documents/Arduino/libraries"
+        ],
+        "limitSymbolsToIncludedHeaders": true
+      }
+    }
+  ],
+  "version": 4
+}

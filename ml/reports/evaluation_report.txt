@@ -1,0 +1,60 @@
+Health Classification Model Evaluation
+==========================================
+Training date      : 2026-07-01T15:58:34.644444+00:00
+Dataset rows       : 900
+Class distribution : Sehat=308, Perlu Perhatian=292, Risiko Tinggi=300
+Primary algorithm  : DecisionTreeClassifier
+Best tree params   : {"ccp_alpha": 0.0, "max_depth": 5, "min_samples_leaf": 2, "min_samples_split": 12}
+Comparison model   : KNeighborsClassifier
+
+Decision Tree Metrics
+----------------------
+Accuracy  : 0.9944
+Precision : 0.9944
+Recall    : 0.9946
+F1-score  : 0.9944
+CV mean   : 0.9789 (+/- 0.0147)
+
+Decision Tree Classification Report
+------------------------------------
+                 precision    recall  f1-score   support
+
+          Sehat     1.0000    0.9839    0.9919        62
+Perlu Perhatian     0.9831    1.0000    0.9915        58
+  Risiko Tinggi     1.0000    1.0000    1.0000        60
+
+       accuracy                         0.9944       180
+      macro avg     0.9944    0.9946    0.9944       180
+   weighted avg     0.9945    0.9944    0.9944       180
+
+
+KNN Comparison Metrics
+----------------------
+Accuracy  : 0.9167
+Precision : 0.9222
+Recall    : 0.9149
+F1-score  : 0.9159
+CV mean   : 0.9467 (+/- 0.0114)
+
+KNN Classification Report
+--------------------------
+                 precision    recall  f1-score   support
+
+          Sehat     0.8451    0.9677    0.9023        62
+Perlu Perhatian     0.9216    0.8103    0.8624        58
+  Risiko Tinggi     1.0000    0.9667    0.9831        60
+
+       accuracy                         0.9167       180
+      macro avg     0.9222    0.9149    0.9159       180
+   weighted avg     0.9214    0.9167    0.9163       180
+
+
+Confusion Matrix (Decision Tree):
+actual/predicted,Sehat,Perlu Perhatian,Risiko Tinggi
+Sehat,61,1,0
+Perlu Perhatian,0,58,0
+Risiko Tinggi,0,0,60
+
+Notes
+-----
+Decision Tree dipilih sebagai model utama untuk dashboard dan prediksi frontend.
