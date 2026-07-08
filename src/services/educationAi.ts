@@ -1,4 +1,4 @@
-import { analyzeEducationTopic, generateEducationReply } from "./educationResponder";
+import { analyzeEducationTopic, generateEducationReply, type EducationWebSource } from "./educationResponder";
 import { predictHealthStatus } from "./healthPrediction";
 import type {
   EducationContext,
@@ -225,6 +225,10 @@ export function generateEducationPrompt(question: string, healthContext: Educati
 Anda adalah asisten edukasi kesehatan untuk aplikasi monitoring IoT.
 Jawaban harus singkat, hangat, sopan, dan berbasis data kesehatan terbaru pengguna.
 Jangan memberi diagnosis pasti dan jangan menggantikan dokter.
+Kalau pertanyaan di luar topik kesehatan, tolak dengan sopan dan arahkan kembali ke topik kesehatan.
+Kalau pertanyaan masih seputar kesehatan, prioritaskan parameter pengguna yang tersedia sebagai dasar utama.
+Jika data kurang, akui dengan jujur dan minta parameter yang dibutuhkan tanpa mengarang data.
+Jika ada rujukan web, prioritaskan sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.
 
 Fokus topik:
 - Topik terdeteksi: ${topic.label}
@@ -259,6 +263,7 @@ Aturan jawaban:
 - Jawab inti pertanyaan dulu, lalu beri saran praktis singkat.
 - Maksimal 2 sampai 4 kalimat pendek.
 - Kalau data kurang, bilang jujur dan minta data yang dibutuhkan dengan lembut.
+- Jika ada rujukan web, tampilkan hanya sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.
 - Kalau ada tanda bahaya, anjurkan ke tenaga medis segera.
 
 Pertanyaan:
@@ -281,9 +286,13 @@ export async function sendEducationQuestionToAI(input: {
   });
 
   return {
-    answer: response,
+    answer: response.answer,
     topic: analyzeEducationTopic(input.question),
     analysis: input.healthContext.analysis,
     prompt,
+    grounded: response.grounded,
+    sources: response.sources as EducationWebSource[],
+    searchQueries: response.searchQueries,
+    searchEntryPointHtml: response.searchEntryPointHtml,
   };
 }

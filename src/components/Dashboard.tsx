@@ -17,7 +17,12 @@ import {
 import { buildUserProfileDoc, getUserProfile, saveUserProfile, subscribeUserProfile } from "../services/userProfile";
 import { getActivitySessionsForUser, saveActivitySessionForUser } from "../services/activitySessions";
 import { analyzeEducationTopic, buildEducationContext, sendEducationQuestionToAI } from "../services/aiDoctor";
-import { createEducationChatMessageForUser, getEducationChatMessagesForUser, subscribeEducationChatMessagesForUser } from "../services/educationChat";
+import {
+  clearEducationChatMessagesForUser,
+  createEducationChatMessageForUser,
+  getEducationChatMessagesForUser,
+  subscribeEducationChatMessagesForUser,
+} from "../services/educationChat";
 import { clearMeasurementHistoryEventsForUser, createHistoryEventForUser, getHistoryEventsForUser, subscribeHistoryEventsForUser } from "../services/historyEvents";
 import { readStore, writeStore } from "../services/localStore";
 import { createReminderForUser, subscribeRemindersForUser, updateReminderForUser } from "../services/reminders";
@@ -33,6 +38,7 @@ import {
   formatLocalWeekdayDate,
   formatLocalDayMonth,
 } from "../services/dateTime";
+import type { EducationWebSource } from "../services/educationResponder";
 import PageContainer from "./ui/PageContainer";
 import AppCard from "./ui/AppCard";
 import PrimaryButton from "./ui/PrimaryButton";
@@ -281,6 +287,10 @@ type VirtualEducationMessage = {
   role: "assistant" | "user";
   text: string;
   createdAt: string;
+  grounded?: boolean;
+  searchQueries?: string[];
+  searchEntryPointHtml?: string;
+  sources?: EducationWebSource[];
 };
 
 const toVirtualEducationMessage = (message: EducationChatMessageDoc & { id: string }): VirtualEducationMessage => ({
@@ -288,7 +298,25 @@ const toVirtualEducationMessage = (message: EducationChatMessageDoc & { id: stri
   role: message.role,
   text: message.text,
   createdAt: message.createdAt,
+  grounded: message.grounded,
+  searchQueries: message.searchQueries,
+  searchEntryPointHtml: message.searchEntryPointHtml,
+  sources: message.sources,
 });
+
+const GoogleSearchSuggestions = ({ renderedContent }: { renderedContent: string }) => {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || !renderedContent) return;
+
+    const shadowRoot = host.shadowRoot || host.attachShadow({ mode: "open" });
+    shadowRoot.innerHTML = renderedContent;
+  }, [renderedContent]);
+
+  return <div ref={hostRef} className="mt-3" />;
+};
 
 const isLegacyGreetingMessage = (message: VirtualEducationMessage) =>
   message.role === "assistant" && message.text.toLowerCase().includes("saya asisten edukasi kesehatan anda");
@@ -399,6 +427,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const educationSpeechRecognitionRef = useRef<SpeechRecognitionInstanceLike | null>(null);
   const educationSpeechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const educationChatEndRef = useRef<HTMLDivElement | null>(null);
+  const educationChatHistoryClearedRef = useRef(false);
   const [activityTrendMetric, setActivityTrendMetric] = useState<"Langkah" | "Jarak" | "Kalori">("Langkah");
   const [mealSummaryRange, setMealSummaryRange] = useState<"Hari Ini" | "7 Hari">("Hari Ini");
   const [isActivityRunning, setIsActivityRunning] = useState(false);
@@ -1120,27 +1149,6 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     latestMeasurementAt: dashboardBmiRecordedAt || "",
   });
   const liveEducationTopic = analyzeEducationTopic(educationChatInput || latestEducationUserMessage || "");
-  const educationParameterChips = [
-    hasBloodPressure ? "Tekanan darah aktif" : "Tekanan darah belum ada",
-    hasHeartRate ? "Detak jantung aktif" : "Detak jantung belum ada",
-    dashboardBmi > 0 ? `BMI ${dashboardBmi.toFixed(1)}` : "BMI menunggu data",
-    totalActivitySteps > 0 ? `${totalActivitySteps.toLocaleString("id-ID")} langkah` : "Aktivitas belum ada",
-    `Status ${educationContext.analysis.overallStatus}`,
-  ];
-  const educationQuickQuestions = [
-    {
-      label: "Cek BMI",
-      question: "Berapa BMI saya dan apa artinya?",
-    },
-    {
-      label: "Tips Minum Air",
-      question: "Berapa saran minum air untuk saya hari ini?",
-    },
-    {
-      label: "Tanya Gejala",
-      question: "Saya merasa lelah, apa edukasi yang cocok?",
-    },
-  ];
   const topicLabelForUi = liveEducationTopic.label;
   const mergedHistoryRows = [...activityHistoryRowsForExport];
   const mergedHistoryKeys = new Set(historyEventRows.map((row) => `${row[0]}|${row[1]}|${row[2]}|${row[5]}`));
@@ -1472,10 +1480,22 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     try {
       setEducationChatInput(nextText);
       setEducationReplying(true);
-      setEducationChatMessages((current) => [...current, userMessage].slice(-EDUCATION_CHAT_MESSAGE_LIMIT));
+      setEducationChatMessages([]);
+      if (userUid && storageReady) {
+        try {
+          await clearEducationChatMessagesForUser(userUid);
+        } catch {
+          notify("Riwayat chat lama tidak berhasil dihapus, tapi chat baru tetap dilanjutkan.");
+        }
+      }
+      setEducationChatMessages([userMessage]);
       setEducationChatInput("");
 
       let assistantText = "";
+      let assistantSources: EducationWebSource[] = [];
+      let assistantSearchQueries: string[] = [];
+      let assistantSearchEntryPointHtml = "";
+      let assistantGrounded = false;
       try {
         const educationReply = await sendEducationQuestionToAI({
           question: nextText,
@@ -1483,6 +1503,10 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
           history: recentHistory,
         });
         assistantText = educationReply.answer;
+        assistantSources = educationReply.sources || [];
+        assistantSearchQueries = educationReply.searchQueries || [];
+        assistantSearchEntryPointHtml = educationReply.searchEntryPointHtml || "";
+        assistantGrounded = Boolean(educationReply.grounded && assistantSources.length > 0);
       } catch {
         assistantText = "Maaf, saya belum bisa menjawab sekarang. Coba lagi sebentar ya.";
       }
@@ -1492,9 +1516,13 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
         role: "assistant",
         text: assistantText,
         createdAt: new Date(Date.now() + 1).toISOString(),
+        grounded: assistantGrounded,
+        searchQueries: assistantSearchQueries,
+        searchEntryPointHtml: assistantSearchEntryPointHtml,
+        sources: assistantSources,
       };
 
-      setEducationChatMessages((current) => [...current, assistantMessage].slice(-EDUCATION_CHAT_MESSAGE_LIMIT));
+      setEducationChatMessages([userMessage, assistantMessage]);
 
       if (userUid && storageReady) {
         try {
@@ -1508,6 +1536,10 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
               role: assistantMessage.role,
               text: assistantMessage.text,
               createdAt: assistantMessage.createdAt,
+              grounded: assistantMessage.grounded,
+              searchQueries: assistantMessage.searchQueries,
+              searchEntryPointHtml: assistantMessage.searchEntryPointHtml,
+              sources: assistantMessage.sources,
             }),
           ]);
         } catch {
@@ -1518,48 +1550,6 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       setEducationReplying(false);
     }
   };
-
-  const startEducationConversation = (question: string) => {
-    void sendEducationChatMessage(question);
-  };
-
-  const educationStatusCards = [
-    {
-      label: "Status utama",
-      value: educationContext.analysis.overallStatus,
-      note: educationContext.analysis.overallRecommendation,
-      icon: "fa-shield-heart",
-      iconClass: "bg-sky-100 text-sky-700",
-    },
-    {
-      label: "BMI",
-      value: dashboardBmi > 0 ? dashboardBmi.toFixed(1) : "-",
-      note: dashboardBmi > 0 ? educationContext.analysis.bmiStatus : "Menunggu data tinggi dan berat",
-      icon: "fa-weight-scale",
-      iconClass: "bg-emerald-100 text-emerald-700",
-    },
-    {
-      label: "Tekanan darah",
-      value: hasBloodPressure ? bloodPressure : "-",
-      note: hasBloodPressure ? educationContext.analysis.bloodPressureStatus : "Belum ada data tekanan darah",
-      icon: "fa-heart-pulse",
-      iconClass: "bg-rose-100 text-rose-700",
-    },
-    {
-      label: "Denyut jantung",
-      value: hasHeartRate ? `${heartRate}` : "-",
-      note: hasHeartRate ? educationContext.analysis.heartRateStatus : "Belum ada data detak jantung",
-      icon: "fa-heart",
-      iconClass: "bg-indigo-100 text-indigo-700",
-    },
-    {
-      label: "Hidrasi",
-      value: waterGlasses > 0 ? `${waterGlasses} gelas` : "-",
-      note: waterGlasses > 0 ? educationContext.analysis.hydrationStatus : "Belum ada data minum",
-      icon: "fa-droplet",
-      iconClass: "bg-blue-100 text-blue-700",
-    },
-  ];
 
   const connectDeviceToFirebase = async (requestedDeviceId = deviceIdInput, showPanelAfterConnect = false) => {
     if (!userUid || !storageReady) {
@@ -2162,6 +2152,20 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     );
     return () => unsubscribe();
   }, [userUid]);
+
+  useEffect(() => {
+    if (activeMenu !== "Edukasi") {
+      educationChatHistoryClearedRef.current = false;
+      return;
+    }
+    if (!userUid || !storageReady || educationChatHistoryClearedRef.current) return;
+
+    educationChatHistoryClearedRef.current = true;
+    setEducationChatMessages([]);
+    void clearEducationChatMessagesForUser(userUid).catch(() => {
+      notify("Riwayat chat lama belum bisa dihapus, tapi chat baru tetap bisa dipakai.");
+    });
+  }, [activeMenu, storageReady, userUid]);
 
   useEffect(() => {
     if (!userUid || !storageReady) return;
@@ -4702,35 +4706,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                 <section className="mt-4">
                   <article className="flex min-h-[calc(100vh-260px)] flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
                     <div className="border-b border-slate-100 bg-[linear-gradient(180deg,#f8fbf9_0%,#ffffff_100%)] px-5 py-5 md:px-6">
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="max-w-3xl">
-                          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-emerald-700">Chat Edukasi</p>
-                          <h4 className="mt-2 text-2xl font-black text-slate-950 md:text-[30px]">Tanya saja, saya jawab seperti bot kesehatan</h4>
-                          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                            Semua percakapan sekarang difokuskan ke chat. Tidak ada lagi card edukasi lama, jadi alurnya lebih bersih dan terasa seperti ngobrol dengan asisten.
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {educationParameterChips.map((chip) => (
-                            <span key={chip} className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[11px] font-bold text-emerald-700">
-                              {chip}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {educationQuickQuestions.map((item) => (
-                          <button
-                            key={item.label}
-                            type="button"
-                            onClick={() => startEducationConversation(item.question)}
-                            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800"
-                          >
-                            <i className="fa-solid fa-bolt text-emerald-600" />
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
+                      <p className="text-[11px] font-black uppercase tracking-[0.24em] text-emerald-700">Chat Edukasi</p>
                     </div>
 
                     <div className="flex-1 bg-[linear-gradient(180deg,#f7faf8_0%,#ffffff_100%)] px-4 py-4 md:px-6">
@@ -4738,9 +4714,10 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                         {educationChatMessages.length === 0 ? (
                           <div className="flex">
                             <div className="max-w-[88%] rounded-[22px] rounded-bl-md border border-emerald-100 bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.05)] md:max-w-[72%]">
-                              <p className="font-black text-slate-950">Saya siap bantu.</p>
+                              <p className="font-black text-slate-950">Halo, saya siap bantu membaca data kesehatan Anda.</p>
                               <p className="mt-1">
-                                Coba tanya tentang BMI, tekanan darah, detak jantung, aktivitas, hidrasi, atau pola makan.
+                                Tanya soal BMI, tekanan darah, detak jantung, aktivitas, hidrasi, atau pola makan. Saya akan jawab
+                                berdasarkan parameter yang tersedia.
                               </p>
                               <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
                                 Topik aktif: {topicLabelForUi}
@@ -4777,6 +4754,35 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                                     <span className={isUser ? "text-emerald-50/70" : "text-slate-400"}>{formatLocalTime(message.createdAt)}</span>
                                   </div>
                                   <p className="whitespace-pre-wrap break-words">{message.text}</p>
+                                  {!isUser && message.grounded && message.sources && message.sources.length > 0 ? (
+                                    <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 py-2">
+                                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                                        Rujukan Google Search
+                                      </p>
+                                      <div className="mt-2 flex flex-wrap gap-2">
+                                        {message.sources.slice(0, 4).map((source) => (
+                                          <a
+                                            key={`${message.id}-${source.uri}`}
+                                            href={source.uri}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex max-w-full items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-emerald-800 transition hover:bg-emerald-100"
+                                          >
+                                            <i className="fa-solid fa-arrow-up-right-from-square text-[10px]" />
+                                            <span className="truncate">{source.title || source.domain || source.uri}</span>
+                                          </a>
+                                        ))}
+                                      </div>
+                                      {message.searchQueries && message.searchQueries.length > 0 ? (
+                                        <p className="mt-2 text-[11px] text-emerald-700/80">
+                                          Kata kunci Google: {message.searchQueries.slice(0, 3).join(", ")}
+                                        </p>
+                                      ) : null}
+                                      {message.searchEntryPointHtml ? (
+                                        <GoogleSearchSuggestions renderedContent={message.searchEntryPointHtml} />
+                                      ) : null}
+                                    </div>
+                                  ) : null}
                                   {!isUser ? (
                                     <div className="mt-3 flex items-center justify-end gap-2">
                                       <button

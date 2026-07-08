@@ -121,6 +121,14 @@ export type EducationChatMessageDoc = {
   role: "assistant" | "user";
   text: string;
   createdAt: string;
+  grounded?: boolean;
+  searchQueries?: string[];
+  searchEntryPointHtml?: string;
+  sources?: Array<{
+    title: string;
+    uri: string;
+    domain?: string;
+  }>;
 };
 
 export type HealthPredictionDoc = {

@@ -28,6 +28,26 @@ type GenerateEducationReplyInput = {
   onUpdate?: (partialText: string) => void;
 };
 
+export type EducationWebSource = {
+  title: string;
+  uri: string;
+  domain?: string;
+};
+
+type GroundingMetadataLike = {
+  searchEntryPoint?: {
+    renderedContent?: string;
+  };
+  groundingChunks?: Array<{
+    web?: {
+      title?: string;
+      uri?: string;
+      domain?: string;
+    };
+  }>;
+  webSearchQueries?: string[];
+};
+
 const HEALTH_CONTEXT_KEYWORDS = [
   "kesehatan",
   "edukasi kesehatan",
@@ -101,7 +121,41 @@ const GENERAL_HEALTH_KEYWORDS = [
 ];
 
 const REFUSAL_MESSAGE =
-  "Maaf, saya hanya bisa membantu edukasi seputar kesehatan. Kalau mau, kirim pertanyaan tentang gejala, pola makan, aktivitas, hidrasi, BMI, atau tekanan darah, lalu saya bantu jelaskan dengan bahasa yang sederhana.";
+  "Maaf, saya hanya bisa membantu percakapan seputar kesehatan. Kalau mau, kirim pertanyaan tentang gejala, pola makan, aktivitas, hidrasi, BMI, atau tekanan darah, lalu saya bantu jelaskan dengan bahasa yang sederhana.";
+
+const OFFICIAL_SOURCE_DOMAINS = ["who.int", "nih.gov", "cdc.gov", "mayoclinic.org"];
+
+const getHostname = (value: string) => {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return value.toLowerCase().replace(/^https?:\/\//, "").split("/")[0];
+  }
+};
+
+const isOfficialSource = (value: string) => {
+  const hostname = getHostname(value);
+  return OFFICIAL_SOURCE_DOMAINS.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
+};
+
+const normalizeSourceTitle = (value?: string) => value?.trim() || "Sumber web";
+
+const extractGroundingSources = (metadata?: GroundingMetadataLike) => {
+  const seen = new Set<string>();
+  return (metadata?.groundingChunks || [])
+    .map<EducationWebSource | null>((chunk) => {
+      const web = chunk.web;
+      const uri = web?.uri?.trim() || "";
+      if (!uri || seen.has(uri) || !isOfficialSource(web?.domain || uri)) return null;
+      seen.add(uri);
+      return {
+        title: normalizeSourceTitle(web?.title || web?.domain),
+        uri,
+        domain: web?.domain?.trim() || undefined,
+      };
+    })
+    .filter((source): source is EducationWebSource => source !== null);
+};
 
 const TOPIC_KEYWORDS: Array<{ topic: EducationTopic; label: string; keywords: string[]; focus: string; guidance: string }> = [
   {
@@ -261,7 +315,10 @@ const buildAvailableDataLines = (analysis: EducationHealthAnalysis, context: Edu
 const buildReplyStyleGuide = (analysis: EducationHealthAnalysis) => [
   `Gunakan nada hangat dan tenang seperti sedang mengedukasi teman.`,
   `Jangan menulis diagnosis pasti.`,
+  `Utamakan parameter kesehatan yang tersedia sebagai dasar jawaban.`,
   `Sebutkan minimal 2 data relevan kalau memang tersedia, misalnya BMI, tekanan darah, detak jantung, aktivitas, atau hidrasi.`,
+  `Kalau data tidak lengkap, sebutkan kekurangannya dengan jujur dan minta parameter yang dibutuhkan dengan lembut.`,
+  `Jika memakai rujukan web, tampilkan hanya sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.`,
   `Selalu tutup dengan langkah sederhana yang bisa dilakukan hari ini.`,
   analysis.overallStatus !== "Baik"
     ? `Jika ada tanda bahaya seperti nyeri dada, sesak, pusing berat, lemas sekali, atau pingsan, sarankan segera periksa ke tenaga medis.`
@@ -449,6 +506,10 @@ const buildEducationPrompt = (input: Omit<GenerateEducationReplyInput, "onUpdate
 Anda adalah asisten edukasi kesehatan untuk aplikasi pemantauan kesehatan.
 Jawaban harus singkat, hangat, sopan, aman, dan berbasis data kesehatan terbaru pengguna.
 Jangan memberi diagnosis pasti dan jangan menggantikan dokter.
+Kalau pertanyaan di luar topik kesehatan, jangan menjawab isi pertanyaannya; tolak dengan sopan lalu arahkan kembali ke topik kesehatan.
+Kalau pertanyaan masih seputar kesehatan, prioritaskan parameter pengguna yang tersedia sebagai dasar utama.
+Jika data kurang, akui dengan jujur dan minta parameter yang dibutuhkan tanpa mengarang data.
+Jika merujuk web, prioritaskan sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.
 
 Fokus topik:
 - Topik terdeteksi: ${input.topic.label}
@@ -505,6 +566,7 @@ Aturan jawaban:
 - Kalau jawaban mulai keluar dari konteks kesehatan, kembali ke edukasi kesehatan.
 - Urutan penjelasan harus jelas: data yang dipakai, arti data itu, lalu saran yang bisa dilakukan hari ini.
 - Kalau kondisinya baik, tekankan kebiasaan yang perlu dipertahankan.
+- Jika ada rujukan web, tampilkan hanya sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.
 
 Pertanyaan:
 ${input.question}
@@ -512,7 +574,13 @@ ${input.question}
 
 export async function generateEducationReply(input: GenerateEducationReplyInput) {
   if (!isHealthRelatedQuestion(input.question, input.history)) {
-    return REFUSAL_MESSAGE;
+    return {
+      answer: REFUSAL_MESSAGE,
+      grounded: false,
+      sources: [] as EducationWebSource[],
+      searchQueries: [] as string[],
+      searchEntryPointHtml: "",
+    };
   }
 
   const topic = analyzeEducationTopic(input.question);
@@ -522,7 +590,8 @@ export async function generateEducationReply(input: GenerateEducationReplyInput)
     const { app } = await import("./firebase");
     const ai = getAI(app, { backend: new GoogleAIBackend() });
     const educationModel = getGenerativeModel(ai, {
-      model: "gemini-flash-latest",
+      model: "gemini-2.5-flash",
+      tools: [{ googleSearch: {} }],
       generationConfig: {
         temperature: 0.2,
         topK: 20,
@@ -538,13 +607,36 @@ export async function generateEducationReply(input: GenerateEducationReplyInput)
       input.onUpdate?.(responseText.trim());
     }
 
+    const finalResponse = await result.response;
+    const groundingMetadata = finalResponse.candidates?.[0]?.groundingMetadata as GroundingMetadataLike | undefined;
+    const sources = extractGroundingSources(groundingMetadata);
+    const searchQueries = groundingMetadata?.webSearchQueries?.map((query) => query.trim()).filter(Boolean) || [];
+    const searchEntryPointHtml = groundingMetadata?.searchEntryPoint?.renderedContent?.trim() || "";
     const cleaned = responseText.trim();
     if (!cleaned || (/(?:Male|Female|Height|Weight)/i.test(cleaned) && cleaned.length < 80)) {
-      return buildTopicFallbackReply(input, topic);
+      return {
+        answer: buildTopicFallbackReply(input, topic),
+        grounded: false,
+        sources: [] as EducationWebSource[],
+        searchQueries: [] as string[],
+        searchEntryPointHtml: "",
+      };
     }
 
-    return cleaned;
+    return {
+      answer: cleaned,
+      grounded: sources.length > 0,
+      sources,
+      searchQueries,
+      searchEntryPointHtml,
+    };
   } catch {
-    return buildTopicFallbackReply(input, topic);
+    return {
+      answer: buildTopicFallbackReply(input, topic),
+      grounded: false,
+      sources: [] as EducationWebSource[],
+      searchQueries: [] as string[],
+      searchEntryPointHtml: "",
+    };
   }
 }

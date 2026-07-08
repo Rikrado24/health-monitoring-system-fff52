@@ -1,4 +1,4 @@
-import { get, onValue, push, ref, set } from "firebase/database";
+import { get, onValue, push, ref, remove, set } from "firebase/database";
 import type { EducationChatMessageDoc } from "../types/storage";
 import { rtdb } from "./firebase";
 
@@ -23,6 +23,17 @@ export async function createEducationChatMessageForUser(
     role: input.role,
     text: input.text.trim() || "-",
     createdAt: input.createdAt || new Date().toISOString(),
+    grounded: Boolean(input.grounded),
+    searchQueries: (input.searchQueries || []).map((query) => String(query || "").trim()).filter(Boolean).slice(0, 8),
+    searchEntryPointHtml: String(input.searchEntryPointHtml || "").trim(),
+    sources: (input.sources || [])
+      .map((source) => ({
+        title: String(source?.title || "").trim() || "Sumber web",
+        uri: String(source?.uri || "").trim(),
+        domain: String(source?.domain || "").trim() || undefined,
+      }))
+      .filter((source) => Boolean(source.uri))
+      .slice(0, 5),
   };
 
   const messageRef = push(ref(rtdb, EDUCATION_CHAT_PATH(uid)));
@@ -40,6 +51,17 @@ export async function getEducationChatMessagesForUser(uid: string, maxRows = 100
   return rows
     .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
     .slice(-maxRows);
+}
+
+export async function clearEducationChatMessagesForUser(uid: string) {
+  if (!uid) return { ok: false as const, message: "User belum ditemukan." };
+
+  await Promise.all([
+    remove(ref(rtdb, EDUCATION_CHAT_PATH(uid))),
+    remove(ref(rtdb, LEGACY_DOCTOR_CHAT_PATH(uid))),
+  ]);
+
+  return { ok: true as const, message: "" };
 }
 
 export function subscribeEducationChatMessagesForUser(
