@@ -1126,6 +1126,80 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     : "";
   const educationActivitySummary = totalActivitySteps > 0 ? `${totalActivitySteps.toLocaleString("id-ID")} langkah hari ini` : "";
   const educationHydrationSummary = waterGlasses > 0 ? `${waterGlasses} gelas air` : "";
+  const recentMeasurementHistorySummary = measurementHistoryDb
+    .slice(0, 4)
+    .map((entry) => {
+      const measuredAt = formatLocalDateTime(entry.tanggal_pengukuran);
+      const bmiFromRecord = Number(entry.bmi) || 0;
+      const bmiFromHeightWeight =
+        Number(entry.tinggi_badan) > 0 && Number(entry.berat_badan) > 0
+          ? Number((Number(entry.berat_badan) / Math.pow(Number(entry.tinggi_badan) / 100, 2)).toFixed(1))
+          : 0;
+      const bmiValue = bmiFromRecord > 0 ? bmiFromRecord : bmiFromHeightWeight;
+      const parts = [
+        measuredAt,
+        `BB ${Number(entry.berat_badan) > 0 ? `${Number(entry.berat_badan).toLocaleString("id-ID")} kg` : "-"}`,
+        `TB ${Number(entry.tinggi_badan) > 0 ? `${Number(entry.tinggi_badan).toLocaleString("id-ID")} cm` : "-"}`,
+        `BMI ${bmiValue > 0 ? bmiValue.toFixed(1) : "-"}`,
+        `TD ${Number(entry.sistolik) > 0 && Number(entry.diastolik) > 0 ? `${entry.sistolik}/${entry.diastolik}` : "-"}`,
+        `Nadi ${Number(entry.detak_jantung) > 0 ? `${Number(entry.detak_jantung).toLocaleString("id-ID")} bpm` : "-"}`,
+        `Langkah ${Number(entry.langkah_kaki) > 0 ? `${Number(entry.langkah_kaki).toLocaleString("id-ID")}` : "-"}`,
+      ].join(", ");
+      return parts;
+    })
+    .join(" | ");
+  const recentActivityHistorySummary = activitySessionDocs
+    .slice(0, 4)
+    .map((session) => {
+      const label = session.motion_label || "aktivitas";
+      const date = formatActivityFinishedAt(session.finished_at);
+      const stepsLabel = Number(session.langkah) > 0 ? `${Number(session.langkah).toLocaleString("id-ID")} langkah` : "langkah belum tercatat";
+      const distanceLabel = Number(session.distance_m) > 0 ? `${(Number(session.distance_m) / 1000).toFixed(2)} km` : "-";
+      const calorieLabel = Number(session.kalori) > 0 ? `${Math.round(Number(session.kalori))} kcal` : "-";
+      return `${date}: ${label}, ${stepsLabel}, ${distanceLabel}, ${calorieLabel}`;
+    })
+    .join(" | ");
+  const recentNutritionHistorySummary = historyEventDocs
+    .filter((entry) => entry.dataType === "Pola Makan" || entry.dataType === "Hidrasi")
+    .slice(0, 4)
+    .map((entry) => `${formatLocalDateTime(entry.occurredAt)}: ${entry.dataType} ${entry.value}`)
+    .join(" | ");
+  const recentTrendSummary = (() => {
+    const latestRecord = measurementHistoryDb[0];
+    const previousRecord = measurementHistoryDb[1];
+    if (!latestRecord || !previousRecord) return "";
+
+    const notes: string[] = [];
+    const latestWeight = Number(latestRecord.berat_badan) || 0;
+    const previousWeight = Number(previousRecord.berat_badan) || 0;
+    if (latestWeight > 0 && previousWeight > 0 && latestWeight !== previousWeight) {
+      const delta = Math.abs(latestWeight - previousWeight).toFixed(1);
+      notes.push(`berat badan ${latestWeight > previousWeight ? "naik" : "turun"} ${delta} kg dari pengukuran sebelumnya`);
+    }
+
+    const latestBmi = Number(latestRecord.bmi) > 0
+      ? Number(latestRecord.bmi)
+      : Number(latestRecord.tinggi_badan) > 0 && Number(latestRecord.berat_badan) > 0
+        ? Number((Number(latestRecord.berat_badan) / Math.pow(Number(latestRecord.tinggi_badan) / 100, 2)).toFixed(1))
+        : 0;
+    const previousBmi = Number(previousRecord.bmi) > 0
+      ? Number(previousRecord.bmi)
+      : Number(previousRecord.tinggi_badan) > 0 && Number(previousRecord.berat_badan) > 0
+        ? Number((Number(previousRecord.berat_badan) / Math.pow(Number(previousRecord.tinggi_badan) / 100, 2)).toFixed(1))
+        : 0;
+    if (latestBmi > 0 && previousBmi > 0 && latestBmi !== previousBmi) {
+      const delta = Math.abs(latestBmi - previousBmi).toFixed(1);
+      notes.push(`BMI ${latestBmi > previousBmi ? "naik" : "turun"} ${delta}`);
+    }
+
+    const latestBp = Number(latestRecord.sistolik) > 0 && Number(latestRecord.diastolik) > 0 ? `${latestRecord.sistolik}/${latestRecord.diastolik}` : "";
+    const previousBp = Number(previousRecord.sistolik) > 0 && Number(previousRecord.diastolik) > 0 ? `${previousRecord.sistolik}/${previousRecord.diastolik}` : "";
+    if (latestBp && previousBp && latestBp !== previousBp) {
+      notes.push(`tekanan darah berubah dari ${previousBp} ke ${latestBp}`);
+    }
+
+    return notes.join("; ");
+  })();
   const latestEducationUserMessage =
     [...educationChatMessages].reverse().find((message) => message.role === "user")?.text || "";
   const educationContext = buildEducationContext({
@@ -1146,6 +1220,14 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     mealSummary: educationMealSummary,
     activitySummary: educationActivitySummary,
     hydrationSummary: educationHydrationSummary,
+    sleepSummary: sleepHours > 0 ? `${sleepHours} jam tidur` : "",
+    recentHistorySummary: [recentTrendSummary, recentMeasurementHistorySummary, recentActivityHistorySummary, recentNutritionHistorySummary]
+      .filter((item) => item.trim() !== "")
+      .join(" | "),
+    recentTrendSummary,
+    recentMeasurementSummary: recentMeasurementHistorySummary,
+    recentActivitySummary: recentActivityHistorySummary,
+    recentNutritionSummary: recentNutritionHistorySummary,
     latestMeasurementAt: dashboardBmiRecordedAt || "",
   });
   const liveEducationTopic = analyzeEducationTopic(educationChatInput || latestEducationUserMessage || "");

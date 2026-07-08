@@ -1,4 +1,4 @@
-import type { EducationContext, EducationHealthAnalysis } from "../types/education";
+import type { EducationContext } from "../types/education";
 
 type ChatHistoryEntry = {
   role: "assistant" | "user";
@@ -12,6 +12,7 @@ type EducationTopic =
   | "aktivitas"
   | "pola_makan"
   | "hidrasi"
+  | "pola_tidur"
   | "umum";
 
 type TopicAnalysis = {
@@ -159,6 +160,7 @@ const extractGroundingSources = (metadata?: GroundingMetadataLike) => {
 
 const GREETING_KEYWORDS = [
   "halo",
+  "hallo",
   "hai",
   "hi",
   "hey",
@@ -237,6 +239,13 @@ const TOPIC_KEYWORDS: Array<{ topic: EducationTopic; label: string; keywords: st
     focus: "Fokus pada asupan air dan apakah jumlahnya sudah cukup untuk hari ini.",
     guidance: "Beri saran praktis yang ringan, mudah diingat, dan mudah dijalankan hari ini.",
   },
+  {
+    topic: "pola_tidur",
+    label: "Pola tidur",
+    keywords: ["tidur", "pola tidur", "jam tidur", "insomnia", "mengantuk", "istirahat"],
+    focus: "Fokus pada pola tidur, durasi, kualitas istirahat, dan dampaknya ke kondisi kesehatan hari ini.",
+    guidance: "Hubungkan tidur dengan aktivitas, detak jantung, dan kondisi umum bila data pendukung tersedia.",
+  },
 ];
 
 const DEFAULT_TOPIC: TopicAnalysis = {
@@ -260,8 +269,7 @@ const isGeneralHealthQuestion = (question: string) => {
 const isHealthRelatedQuestion = (question: string, history: ChatHistoryEntry[]) => {
   const normalizedQuestion = question.toLowerCase();
   if (isGreetingQuestion(question) || isGeneralHealthQuestion(question)) return true;
-  const hasCurrentHealthKeyword = HEALTH_CONTEXT_KEYWORDS.some((keyword) => normalizedQuestion.includes(keyword));
-  if (hasCurrentHealthKeyword) return true;
+  if (HEALTH_CONTEXT_KEYWORDS.some((keyword) => normalizedQuestion.includes(keyword))) return true;
 
   const recentHistoryText = history
     .slice(-4)
@@ -273,71 +281,20 @@ const isHealthRelatedQuestion = (question: string, history: ChatHistoryEntry[]) 
   return hasRecentHealthContext && looksLikeFollowUp;
 };
 
-const formatHistory = (history: ChatHistoryEntry[]) =>
-  history
-    .slice(-4)
-    .map((entry, index) => {
-      const roleLabel = entry.role === "user" ? "Pertanyaan user" : "Jawaban asisten";
-      return `${index + 1}. ${roleLabel}: ${entry.text}`;
-    })
-    .join("\n");
-
-const toCompactSentence = (value: string) => value.trim().replace(/\s+/g, " ").replace(/^[-•\d.)\s]+/, "");
-
-const formatMaybeValue = (value: string | number | undefined, fallback = "-") => {
-  if (typeof value === "number") {
-    return Number.isFinite(value) && value > 0 ? String(value) : fallback;
-  }
-
-  const cleaned = String(value || "").trim();
-  return cleaned && cleaned !== "-" ? cleaned : fallback;
-};
-
-const summarizeHistory = (history: ChatHistoryEntry[]) =>
-  history
-    .slice(-4)
-    .map((entry, index) => {
-      const roleLabel = entry.role === "user" ? "Pertanyaan" : "Jawaban";
-      return `${index + 1}. ${roleLabel}: ${entry.text.trim().replace(/\s+/g, " ")}`;
-    })
-    .join(" | ");
-
-const buildDataBasis = (analysis: EducationHealthAnalysis, context: EducationContext) => {
-  const items = [
-    analysis.bmiValue > 0 ? `BMI ${analysis.bmiValue.toFixed(1)} (${analysis.bmiStatus})` : "",
-    context.educationContext.bloodPressure && context.educationContext.bloodPressure !== "-"
-      ? `Tekanan darah ${context.educationContext.bloodPressure} (${analysis.bloodPressureStatus})`
-      : "",
-    context.educationContext.heartRate && context.educationContext.heartRate !== "-"
-      ? `Detak jantung ${context.educationContext.heartRate} (${analysis.heartRateStatus})`
-      : "",
-    context.educationContext.activitySummary && context.educationContext.activitySummary !== "-"
-      ? `Aktivitas ${context.educationContext.activitySummary} (${analysis.activityStatus})`
-      : "",
-    context.educationContext.hydrationSummary && context.educationContext.hydrationSummary !== "-"
-      ? `Hidrasi ${context.educationContext.hydrationSummary} (${analysis.hydrationStatus})`
-      : "",
-    context.educationContext.mealSummary && context.educationContext.mealSummary !== "-"
-      ? `Pola makan ${context.educationContext.mealSummary}`
-      : "",
-  ];
-
-  return items.filter((item) => item.trim() !== "");
-};
-
 const isMeaningfulValue = (value?: string) => Boolean(value && value.trim() && value.trim() !== "-");
 
-const buildAvailableDataLines = (analysis: EducationHealthAnalysis, context: EducationContext) => {
-  const items = [
-    analysis.bmiValue > 0 ? `BMI ${analysis.bmiValue.toFixed(1)} (${analysis.bmiStatus})` : "",
-    isMeaningfulValue(context.educationContext.height) ? `Tinggi badan ${context.educationContext.height}` : "",
-    isMeaningfulValue(context.educationContext.weight) ? `Berat badan ${context.educationContext.weight}` : "",
+const compactText = (value: string) => value.trim().replace(/\s+/g, " ");
+
+const collectDataLines = (context: EducationContext) => {
+  const analysis = context.analysis;
+  return [
     isMeaningfulValue(context.educationContext.bloodPressure)
       ? `Tekanan darah ${context.educationContext.bloodPressure} (${analysis.bloodPressureStatus})`
       : "",
     isMeaningfulValue(context.educationContext.heartRate)
       ? `Detak jantung ${context.educationContext.heartRate} (${analysis.heartRateStatus})`
       : "",
+    analysis.bmiValue > 0 ? `BMI ${analysis.bmiValue.toFixed(1)} (${analysis.bmiStatus})` : "",
     isMeaningfulValue(context.educationContext.activitySummary)
       ? `Aktivitas ${context.educationContext.activitySummary} (${analysis.activityStatus})`
       : "",
@@ -345,26 +302,12 @@ const buildAvailableDataLines = (analysis: EducationHealthAnalysis, context: Edu
       ? `Hidrasi ${context.educationContext.hydrationSummary} (${analysis.hydrationStatus})`
       : "",
     isMeaningfulValue(context.educationContext.mealSummary) ? `Pola makan ${context.educationContext.mealSummary}` : "",
-  ];
-
-  return items.filter(Boolean);
+    isMeaningfulValue(context.educationContext.sleepSummary) ? `Pola tidur ${context.educationContext.sleepSummary}` : "",
+  ].filter(Boolean);
 };
 
-const buildReplyStyleGuide = (analysis: EducationHealthAnalysis) => [
-  `Gunakan nada hangat dan tenang seperti sedang mengedukasi teman.`,
-  `Jangan menulis diagnosis pasti.`,
-  `Utamakan parameter kesehatan yang tersedia sebagai dasar jawaban.`,
-  `Sebutkan minimal 2 data relevan kalau memang tersedia, misalnya BMI, tekanan darah, detak jantung, aktivitas, atau hidrasi.`,
-  `Kalau data tidak lengkap, sebutkan kekurangannya dengan jujur dan minta parameter yang dibutuhkan dengan lembut.`,
-  `Jika memakai rujukan web, tampilkan hanya sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.`,
-  `Selalu tutup dengan langkah sederhana yang bisa dilakukan hari ini.`,
-  analysis.overallStatus !== "Baik"
-    ? `Jika ada tanda bahaya seperti nyeri dada, sesak, pusing berat, lemas sekali, atau pingsan, sarankan segera periksa ke tenaga medis.`
-    : `Kalau kondisinya baik, tekankan kebiasaan yang perlu dipertahankan agar tetap stabil.`,
-];
-
-const buildMissingDataLines = (context: EducationContext) => {
-  const items = [
+const collectMissingData = (context: EducationContext) => {
+  return [
     !isMeaningfulValue(context.educationContext.height) || !isMeaningfulValue(context.educationContext.weight)
       ? "tinggi dan berat badan"
       : "",
@@ -373,182 +316,109 @@ const buildMissingDataLines = (context: EducationContext) => {
     !isMeaningfulValue(context.educationContext.activitySummary) ? "aktivitas harian" : "",
     !isMeaningfulValue(context.educationContext.hydrationSummary) ? "hidrasi" : "",
     !isMeaningfulValue(context.educationContext.mealSummary) ? "pola makan" : "",
-  ];
-
-  return items.filter(Boolean);
-};
-
-const buildGeneralHealthReply = (input: Omit<GenerateEducationReplyInput, "onUpdate">) => {
-  const analysis = input.context.analysis;
-  const availableData = buildAvailableDataLines(analysis, input.context);
-  const missingData = buildMissingDataLines(input.context);
-  const hasAvailableData = availableData.length > 0;
-  const keyNote = analysis.educationalNotes.find((note) => note.toLowerCase().includes(analysis.overallStatus.toLowerCase()))
-    || analysis.educationalNotes[0]
-    || analysis.overallRecommendation;
-  const practicalAdvice =
-    analysis.overallRecommendation ||
-    "Pertahankan kebiasaan sehat, lalu pantau data secara rutin supaya perubahan kecil lebih mudah terlihat.";
-  const dataSummary = hasAvailableData
-    ? `Data utama yang saya pakai: ${availableData.slice(0, 4).join(", ")}${missingData.length > 0 ? `. Data yang belum ada: ${missingData.slice(0, 3).join(", ")}` : ""}.`
-    : `Data yang masih belum lengkap membuat penilaian masih terbatas: ${missingData.slice(0, 4).join(", ")}.`;
-  const ringkasan = hasAvailableData
-    ? `Saya tangkap datanya, dan dari data terbaru yang tersedia kondisi Anda saat ini ${analysis.overallStatus.toLowerCase()}.`
-    : `Saya mengerti datanya masih belum lengkap, jadi saya belum bisa menilai kondisi Anda dengan tajam.`;
-  const data = dataSummary;
-  const saranPoin = [
-    toCompactSentence(practicalAdvice),
-    keyNote ? toCompactSentence(keyNote) : "",
-    missingData.includes("tinggi dan berat badan") ? "Kalau sempat, lengkapi tinggi dan berat badan supaya BMI terbaca lebih akurat." : "",
-    missingData.includes("tekanan darah") ? "Kalau ada, cek tekanan darah juga supaya saran saya bisa lebih pas dengan kondisi Anda." : "",
-    missingData.includes("detak jantung") ? "Tambahkan detak jantung bila tersedia supaya gambaran kondisi Anda lebih lengkap." : "",
-    missingData.includes("aktivitas harian") ? "Catat langkah harian supaya saya bisa memberi saran aktivitas yang lebih realistis." : "",
-    missingData.includes("hidrasi") ? "Tambahkan data minum kalau ada, supaya saran hidrasi tidak terlalu umum." : "",
-    missingData.includes("pola makan") ? "Isi ringkasan makan bila sempat, supaya edukasi nutrisi lebih relevan buat Anda." : "",
+    !isMeaningfulValue(context.educationContext.sleepSummary) ? "pola tidur" : "",
   ].filter(Boolean);
-  const saran = saranPoin.slice(0, 3).join(" ");
-  const catatan = `Kalau Anda mau, saya bisa bantu baca per data satu per satu dengan pelan-pelan: BMI, tekanan darah, detak jantung, aktivitas, hidrasi, atau pola makan.`;
-
-  return [`Ringkasan: ${ringkasan}`, `Data: ${data}`, `Saran: ${saran}`, `Catatan: ${catatan}`].join("\n");
 };
 
-const buildTopicFallbackReply = (input: Omit<GenerateEducationReplyInput, "onUpdate">, topic: TopicAnalysis) => {
-  const analysis = input.context.analysis;
-  const availableData = buildAvailableDataLines(analysis, input.context);
-  const missingData = buildMissingDataLines(input.context);
-  const firstData = availableData.slice(0, 2).join(", ");
-  const secondData = availableData.slice(2, 4).join(", ");
+const collectHistoryHighlights = (context: EducationContext) =>
+  [
+    context.educationContext.recentTrendSummary,
+    context.educationContext.recentHistorySummary,
+    context.educationContext.recentMeasurementSummary,
+    context.educationContext.recentActivitySummary,
+    context.educationContext.recentNutritionSummary,
+  ]
+    .map((value) => value?.trim())
+    .filter(Boolean) as string[];
 
-  if (topic.topic === "aktivitas") {
-    const activityData = isMeaningfulValue(input.context.educationContext.activitySummary)
-      ? input.context.educationContext.activitySummary
-      : "belum ada data aktivitas";
-    const activityAdvice =
-      analysis.activityStatus === "Aktif" || analysis.activityStatus === "Cukup aktif"
-        ? "Pertahankan ritme jalan kaki atau olahraga ringan seperti sekarang, lalu jaga konsistensi tiap hari."
-        : analysis.activityStatus === "Kurang aktif"
-          ? "Coba tambah 10-15 menit jalan kaki atau pecah aktivitas menjadi beberapa sesi singkat agar lebih mudah dijalankan."
-          : analysis.activityStatus === "Sangat kurang aktif"
-            ? "Mulai dari target kecil dulu, misalnya berdiri dan berjalan singkat setiap jam."
-            : "Lengkapi data aktivitas harian agar saya bisa memberi saran yang lebih tepat.";
-
-    return [
-      `Ringkasan: Saya tangkap, aktivitas fisik Anda saat ini ${analysis.activityStatus.toLowerCase()}.`,
-      `Data: Data yang dipakai: ${activityData}${firstData ? `. Data pendukung lain: ${firstData}` : ""}${secondData ? `. Data tambahan: ${secondData}` : ""}.`,
-      `Saran: ${activityAdvice}`,
-      `Catatan: ${missingData.includes("aktivitas harian") ? "Kalau Anda kirim jumlah langkah harian atau durasi olahraga, saya bisa membaca aktivitas Anda dengan lebih akurat dan tenang." : "Kalau mau, saya juga bisa bantu lihat apakah ritme aktivitas Anda sudah cukup untuk target kesehatan yang Anda inginkan."}`,
-    ].join("\n");
-  }
-
-  if (topic.topic === "hidrasi") {
-    const hydrationData = isMeaningfulValue(input.context.educationContext.hydrationSummary)
-      ? input.context.educationContext.hydrationSummary
-      : "belum ada data hidrasi";
-    const hydrationAdvice =
-      analysis.hydrationStatus === "Cukup"
-        ? "Pertahankan kebiasaan minum air yang sudah baik."
-        : analysis.hydrationStatus === "Perlu ditambah"
-          ? "Tambahkan minum air sedikit demi sedikit sepanjang hari, jangan tunggu sampai haus."
-          : "Lengkapi data minum agar saya bisa memberi saran hidrasi yang lebih tepat.";
-
-    return [
-      `Ringkasan: Saya tangkap, hidrasi Anda saat ini ${analysis.hydrationStatus.toLowerCase()}.`,
-      `Data: Data yang dipakai: ${hydrationData}${firstData ? `. Data pendukung lain: ${firstData}` : ""}${secondData ? `. Data tambahan: ${secondData}` : ""}.`,
-      `Saran: ${hydrationAdvice}`,
-      `Catatan: ${missingData.includes("hidrasi") ? "Kalau Anda catat jumlah gelas air per hari, saya bisa membaca hidrasi Anda dengan lebih spesifik." : "Saya bisa bantu lihat apakah kebutuhan minum Anda sudah mendekati target harian."}`,
-    ].join("\n");
-  }
-
-  if (topic.topic === "bmi_berat") {
-    const bmiData = analysis.bmiValue > 0 ? `BMI ${analysis.bmiValue.toFixed(1)} (${analysis.bmiStatus})` : "BMI belum tersedia";
-    const bmiAdvice =
-      analysis.bmiStatus === "Normal"
-        ? "Pertahankan pola makan dan aktivitas Anda."
-        : analysis.bmiStatus === "Kurang"
-          ? "Tambahkan asupan makan bergizi secara bertahap dan pantau berat badan."
-          : analysis.bmiStatus === "Overweight" || analysis.bmiStatus === "Obesitas"
-            ? "Mulai atur porsi makan, pilih makanan lebih seimbang, dan tambah aktivitas rutin."
-            : "Lengkapi tinggi dan berat badan agar analisis BMI lebih akurat.";
-
-    return [
-      `Ringkasan: Saya tangkap, berdasarkan BMI yang tersedia kondisi Anda berada pada kategori ${analysis.bmiStatus.toLowerCase()}.`,
-      `Data: Data yang dipakai: ${bmiData}${firstData ? `. Data pendukung lain: ${firstData}` : ""}${secondData ? `. Data tambahan: ${secondData}` : ""}.`,
-      `Saran: ${bmiAdvice}`,
-      `Catatan: Kalau tinggi dan berat badan belum lengkap, penilaian BMI memang belum bisa dibuat secara kuat, jadi tidak apa-apa ya.`,
-    ].join("\n");
-  }
-
-  if (topic.topic === "tekanan_darah") {
-    const bpData = isMeaningfulValue(input.context.educationContext.bloodPressure)
-      ? `${input.context.educationContext.bloodPressure} (${analysis.bloodPressureStatus})`
-      : "belum ada data tekanan darah";
-    const bpAdvice =
-      analysis.bloodPressureStatus === "Normal"
-        ? "Pertahankan pola hidup yang sudah baik dan pantau secara rutin."
-        : analysis.bloodPressureStatus === "Rendah"
+const buildGuidanceByTopic = (topic: TopicAnalysis, context: EducationContext) => {
+  switch (topic.topic) {
+    case "tekanan_darah":
+      return context.analysis.bloodPressureStatus === "Normal"
+        ? "Pertahankan kebiasaan yang sudah baik dan pantau secara rutin."
+        : context.analysis.bloodPressureStatus === "Rendah"
           ? "Cukupi cairan, bangun perlahan, dan perhatikan bila sering pusing."
-          : analysis.bloodPressureStatus === "Waspada" || analysis.bloodPressureStatus === "Tinggi"
+          : context.analysis.bloodPressureStatus === "Waspada" || context.analysis.bloodPressureStatus === "Tinggi"
             ? "Kurangi garam berlebih, istirahat cukup, dan pantau ulang tekanan darah setelah tubuh lebih tenang."
             : "Lengkapi data tekanan darah agar saya bisa memberi edukasi yang lebih tepat.";
-
-    return [
-      `Ringkasan: Saya tangkap, tekanan darah Anda saat ini ${analysis.bloodPressureStatus.toLowerCase()}.`,
-      `Data: Data yang dipakai: ${bpData}${firstData ? `. Data pendukung lain: ${firstData}` : ""}${secondData ? `. Data tambahan: ${secondData}` : ""}.`,
-      `Saran: ${bpAdvice}`,
-      `Catatan: Kalau ada pusing, lemas, nyeri dada, atau sesak, sebaiknya segera periksa ke tenaga medis ya.`,
-    ].join("\n");
-  }
-
-  if (topic.topic === "detak_jantung") {
-    const hrData = isMeaningfulValue(input.context.educationContext.heartRate)
-      ? `${input.context.educationContext.heartRate} (${analysis.heartRateStatus})`
-      : "belum ada data detak jantung";
-    const hrAdvice =
-      analysis.heartRateStatus === "Normal"
+    case "detak_jantung":
+      return context.analysis.heartRateStatus === "Normal"
         ? "Pertahankan kebiasaan sehat dan pantau jika ada keluhan."
-        : analysis.heartRateStatus === "Rendah"
+        : context.analysis.heartRateStatus === "Rendah"
           ? "Istirahat cukup dan perhatikan bila sering pusing atau lemas."
-          : analysis.heartRateStatus === "Tinggi"
+          : context.analysis.heartRateStatus === "Tinggi"
             ? "Coba tenangkan diri, istirahat 5-10 menit, lalu pantau ulang bila tetap tinggi."
             : "Lengkapi data detak jantung agar saya bisa memberi saran yang lebih spesifik.";
-
-    return [
-      `Ringkasan: Saya tangkap, detak jantung Anda saat ini ${analysis.heartRateStatus.toLowerCase()}.`,
-      `Data: Data yang dipakai: ${hrData}${firstData ? `. Data pendukung lain: ${firstData}` : ""}${secondData ? `. Data tambahan: ${secondData}` : ""}.`,
-      `Saran: ${hrAdvice}`,
-      `Catatan: Kalau keluhan berlanjut atau disertai sesak, pusing berat, atau nyeri dada, segera cari bantuan medis ya.`,
-    ].join("\n");
-  }
-
-  if (topic.topic === "pola_makan") {
-    const mealData = isMeaningfulValue(input.context.educationContext.mealSummary)
-      ? input.context.educationContext.mealSummary
-      : "belum ada data pola makan";
-    const mealAdvice =
-      analysis.overallStatus === "Baik"
+    case "bmi_berat":
+      return context.analysis.bmiStatus === "Normal"
+        ? "Pertahankan pola makan dan aktivitas yang sudah seimbang."
+        : context.analysis.bmiStatus === "Kurang"
+          ? "Tambahkan asupan bergizi secara bertahap dan pantau berat badan."
+          : context.analysis.bmiStatus === "Overweight" || context.analysis.bmiStatus === "Obesitas"
+            ? "Atur porsi makan, pilih menu lebih seimbang, dan tambah aktivitas rutin."
+            : "Lengkapi tinggi dan berat badan agar analisis BMI lebih akurat.";
+    case "aktivitas":
+      return context.analysis.activityStatus === "Aktif" || context.analysis.activityStatus === "Cukup aktif"
+        ? "Pertahankan ritme langkah atau olahraga ringan yang sudah ada."
+        : context.analysis.activityStatus === "Kurang aktif"
+          ? "Coba tambah 10-15 menit jalan kaki atau pecah aktivitas menjadi sesi singkat."
+          : context.analysis.activityStatus === "Sangat kurang aktif"
+            ? "Mulai dari target kecil dulu, misalnya berdiri dan berjalan singkat setiap jam."
+            : "Lengkapi data aktivitas harian agar saya bisa memberi saran yang lebih tepat.";
+    case "pola_makan":
+      return context.analysis.overallStatus === "Baik"
         ? "Pertahankan komposisi makan yang seimbang dan jangan lupa protein, serat, serta cairan."
         : "Coba pilih menu yang lebih seimbang dengan karbohidrat, protein, lemak sehat, dan serat.";
-
-    return [
-      `Ringkasan: Saya tangkap, pola makan Anda bisa diarahkan untuk mendukung kondisi kesehatan saat ini.`,
-      `Data: Data yang dipakai: ${mealData}${firstData ? `. Data pendukung lain: ${firstData}` : ""}${secondData ? `. Data tambahan: ${secondData}` : ""}.`,
-      `Saran: ${mealAdvice}`,
-      `Catatan: Kalau Anda ingin, saya bisa bantu susun saran makan dari data aktivitas, hidrasi, dan BMI Anda dengan lebih pelan-pelan.`
-    ].join("\n");
+    case "hidrasi":
+      return context.analysis.hydrationStatus === "Cukup"
+        ? "Pertahankan kebiasaan minum air yang sudah baik."
+        : context.analysis.hydrationStatus === "Perlu ditambah"
+          ? "Tambahkan minum air sedikit demi sedikit sepanjang hari, jangan tunggu sampai haus."
+          : "Lengkapi data minum agar saya bisa memberi saran hidrasi yang lebih tepat.";
+    case "pola_tidur":
+      return isMeaningfulValue(context.educationContext.sleepSummary)
+        ? "Pertahankan pola tidur yang stabil dan usahakan jam tidur konsisten."
+        : "Kalau data tidur ada, saya bisa mengaitkannya dengan kondisi harian Anda dengan lebih tepat.";
+    default:
+      return context.analysis.overallRecommendation;
   }
+};
 
-  return buildGeneralHealthReply(input);
+const buildContextualFallbackReply = (input: Omit<GenerateEducationReplyInput, "onUpdate">, topic: TopicAnalysis) => {
+  const analysis = input.context.analysis;
+  const dataLines = collectDataLines(input.context);
+  const missingData = collectMissingData(input.context);
+  const historyHighlights = collectHistoryHighlights(input.context);
+  const dataSummary = dataLines.length > 0 ? dataLines.slice(0, 4).join(", ") : "Data kesehatan belum cukup lengkap";
+  const historySummary = historyHighlights.length > 0 ? historyHighlights.slice(0, 3).join(" | ") : "Belum ada riwayat tambahan";
+  const opening =
+    topic.topic === "umum"
+      ? `Berdasarkan data terbaru dan riwayat yang masuk, kondisi Anda ${analysis.overallStatus.toLowerCase()}.`
+      : `Saya tangkap, ini terkait ${topic.label.toLowerCase()} dan saya lihat dari riwayat datanya kondisi Anda ${analysis.overallStatus.toLowerCase()}.`;
+  const guidance = compactText(buildGuidanceByTopic(topic, input.context));
+  const extras = analysis.overallRecommendation ? compactText(analysis.overallRecommendation) : "";
+  const missingNote = missingData.length > 0 ? `Data yang masih kurang: ${missingData.slice(0, 4).join(", ")}.` : "Data pendukung sudah cukup untuk ringkasan dasar.";
+  const trendNote = input.context.educationContext.recentTrendSummary
+    ? `Tren singkat: ${compactText(input.context.educationContext.recentTrendSummary)}.`
+    : "";
+
+  return [
+    `Ringkasan: ${opening} ${trendNote || ""}`.trim(),
+    `Data: ${dataSummary}. Riwayat terbaru: ${historySummary}. ${missingNote}`.trim(),
+    `Saran: ${guidance}${extras ? ` ${extras}` : ""}`.trim(),
+    `Catatan: ${analysis.overallStatus !== "Baik" ? "Kalau ada nyeri dada, sesak, pusing berat, lemas sekali, atau pingsan, segera periksa ke tenaga medis." : "Kalau kondisinya stabil, pertahankan kebiasaan baik dan pantau rutin."}`,
+  ].join("\n");
 };
 
 const buildEducationPrompt = (input: Omit<GenerateEducationReplyInput, "onUpdate"> & { topic: TopicAnalysis }) => `
 Anda adalah asisten edukasi kesehatan untuk aplikasi pemantauan kesehatan.
-Jawaban harus singkat, hangat, sopan, aman, dan berbasis data kesehatan terbaru pengguna.
+Jawaban harus hangat, sopan, aman, dan berbasis data kesehatan terbaru pengguna.
 Jangan memberi diagnosis pasti dan jangan menggantikan dokter.
 Kalau pertanyaan di luar topik kesehatan, jangan menjawab isi pertanyaannya; tolak dengan sopan lalu arahkan kembali ke topik kesehatan.
-Kalau pertanyaan masih seputar kesehatan, prioritaskan parameter pengguna yang tersedia sebagai dasar utama.
+Kalau pertanyaan masih seputar kesehatan, prioritaskan data pengguna yang tersedia dan riwayat data yang sudah masuk.
 Jika data kurang, akui dengan jujur dan minta parameter yang dibutuhkan tanpa mengarang data.
 Jika merujuk web, prioritaskan sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.
-Untuk pertanyaan umum seperti "bagaimana kesehatan saya", jelaskan status keseluruhan, data yang paling berpengaruh, data yang masih kurang, dan 1-2 langkah praktis yang bisa dilakukan hari ini.
+Untuk pertanyaan umum seperti "bagaimana kesehatan saya", jelaskan status keseluruhan, data yang paling berpengaruh, perubahan dari riwayat, data yang masih kurang, dan 1-2 langkah praktis yang bisa dilakukan hari ini.
 
 Fokus topik:
 - Topik terdeteksi: ${input.topic.label}
@@ -563,6 +433,12 @@ Konteks kesehatan:
 - Berat badan: ${input.context.educationContext.weight}
 - Lokasi: ${input.context.educationContext.location}
 - Ringkasan kesehatan: ${input.context.educationContext.healthSummary}
+- Riwayat terbaru: ${input.context.educationContext.recentHistorySummary || "-"}
+- Tren terbaru: ${input.context.educationContext.recentTrendSummary || "-"}
+- Riwayat pengukuran: ${input.context.educationContext.recentMeasurementSummary || "-"}
+- Riwayat aktivitas: ${input.context.educationContext.recentActivitySummary || "-"}
+- Riwayat nutrisi: ${input.context.educationContext.recentNutritionSummary || "-"}
+- Pola tidur: ${input.context.educationContext.sleepSummary || "-"}
 - Tekanan darah: ${input.context.educationContext.bloodPressure}
 - Status tekanan darah: ${input.context.educationContext.bloodPressureStatus}
 - Detak jantung: ${input.context.educationContext.heartRate}
@@ -579,17 +455,21 @@ Analisis cepat:
 - Status keseluruhan: ${input.context.analysis.overallStatus}
 
 Snapshot data:
-- Data yang tersedia: ${buildAvailableDataLines(input.context.analysis, input.context).join(" | ") || "belum ada data yang bisa dipakai"}
-- Data yang belum tersedia: ${buildMissingDataLines(input.context).join(", ") || "tidak ada"}
-- Riwayat percakapan terakhir: ${summarizeHistory(input.history) || "belum ada riwayat"}
+- Data yang tersedia: ${collectDataLines(input.context).join(" | ") || "belum ada data yang bisa dipakai"}
+- Data yang belum tersedia: ${collectMissingData(input.context).join(", ") || "tidak ada"}
+- Riwayat percakapan terakhir: ${input.history.slice(-4).map((entry, index) => `${index + 1}. ${entry.role === "user" ? "Pertanyaan" : "Jawaban"}: ${entry.text.trim().replace(/\s+/g, " ")}`).join(" | ") || "belum ada riwayat"}
 
 Gaya jawaban:
-- ${buildReplyStyleGuide(input.context.analysis).join("\n- ")}
-
-Aturan jawaban:
 - Gunakan bahasa Indonesia yang natural, akrab, dan menenangkan.
 - Buat bahasa terasa personal, seolah sedang bicara langsung dengan satu orang.
 - Saat cocok, pakai validasi singkat seperti "Saya tangkap" atau "Saya mengerti".
+- Jadikan riwayat data sebagai dasar utama, bukan cuma data terakhir.
+- Kalau ada perubahan dari riwayat, sebutkan perubahan itu secara eksplisit.
+- Selalu tutup dengan langkah sederhana yang bisa dilakukan hari ini.
+- Jika ada rujukan web, tampilkan hanya sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.
+- Jika ada tanda bahaya, anjurkan segera periksa ke tenaga medis.
+
+Aturan jawaban:
 - Jawab inti pertanyaan dulu, lalu beri saran praktis singkat.
 - Wajib pakai format berikut dan jangan diubah:
   Ringkasan: ...
@@ -597,16 +477,12 @@ Aturan jawaban:
   Saran: ...
   Catatan: ...
 - Setiap bagian cukup 1 sampai 2 kalimat pendek.
-- Minimal sebut 2 data kesehatan yang relevan jika datanya memang tersedia.
-- Jika pertanyaannya umum tentang kondisi kesehatan, boleh jawab sedikit lebih panjang daripada salam biasa agar terasa pintar dan detail.
+- Jika pertanyaannya umum tentang kondisi kesehatan, boleh buat jawaban sedikit lebih panjang agar terasa detail dan peka konteks.
 - Jangan menulis saran umum yang tidak menyebut data pendukungnya.
 - Jangan menyalin teks konteks mentah.
-- Kalau data kurang, akui dengan jujur dan minta data yang dibutuhkan dengan lembut.
-- Kalau ada tanda bahaya, anjurkan segera periksa ke tenaga medis.
 - Kalau jawaban mulai keluar dari konteks kesehatan, kembali ke edukasi kesehatan.
 - Urutan penjelasan harus jelas: data yang dipakai, arti data itu, lalu saran yang bisa dilakukan hari ini.
 - Kalau kondisinya baik, tekankan kebiasaan yang perlu dipertahankan.
-- Jika ada rujukan web, tampilkan hanya sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.
 
 Pertanyaan:
 ${input.question}
@@ -666,7 +542,7 @@ export async function generateEducationReply(input: GenerateEducationReplyInput)
     const cleaned = responseText.trim();
     if (!cleaned || (/(?:Male|Female|Height|Weight)/i.test(cleaned) && cleaned.length < 80)) {
       return {
-        answer: buildTopicFallbackReply(input, topic),
+        answer: buildContextualFallbackReply(input, topic),
         grounded: false,
         sources: [] as EducationWebSource[],
         searchQueries: [] as string[],
@@ -683,7 +559,7 @@ export async function generateEducationReply(input: GenerateEducationReplyInput)
     };
   } catch {
     return {
-      answer: buildTopicFallbackReply(input, topic),
+      answer: buildContextualFallbackReply(input, topic),
       grounded: false,
       sources: [] as EducationWebSource[],
       searchQueries: [] as string[],

@@ -28,6 +28,12 @@ export type EducationSourceData = {
   mealSummary?: string;
   activitySummary?: string;
   hydrationSummary?: string;
+  sleepSummary?: string;
+  recentHistorySummary?: string;
+  recentTrendSummary?: string;
+  recentMeasurementSummary?: string;
+  recentActivitySummary?: string;
+  recentNutritionSummary?: string;
   latestMeasurementAt?: string;
 };
 
@@ -39,6 +45,12 @@ export type EducationPromptContext = {
   weight: string;
   location: string;
   healthSummary: string;
+  recentHistorySummary: string;
+  recentTrendSummary: string;
+  recentMeasurementSummary: string;
+  recentActivitySummary: string;
+  recentNutritionSummary: string;
+  sleepSummary: string;
   bloodPressure: string;
   bloodPressureStatus: string;
   heartRate: string;
