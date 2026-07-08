@@ -14,7 +14,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, cross_val_score, train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler, StandardScaler
 from sklearn.tree import DecisionTreeClassifier
 
 
@@ -299,7 +299,7 @@ def knn_to_json(
     dataset_rows: int,
     dataset_distribution: dict[int, int],
 ) -> dict[str, Any]:
-    scaler: StandardScaler = model.named_steps["scaler"]
+    scaler: RobustScaler = model.named_steps["scaler"]
     knn: KNeighborsClassifier = model.named_steps["knn"]
     scaled_samples = scaler.transform(x_train)
 
@@ -311,13 +311,14 @@ def knn_to_json(
         "k": int(knn.n_neighbors),
         "weights": str(knn.weights),
         "metric": str(knn.metric),
+        "p": int(getattr(knn, "p", 2)),
         "training_date": datetime.now(timezone.utc).isoformat(),
         "accuracy": round(float(accuracy), 6),
         "dataset_rows": dataset_rows,
         "class_distribution": {str(key): value for key, value in dataset_distribution.items()},
         "class_labels": {str(key): value for key, value in CLASS_LABELS.items()},
         "scaler": {
-            "mean": [round(float(value), 6) for value in scaler.mean_.tolist()],
+            "center": [round(float(value), 6) for value in scaler.center_.tolist()],
             "scale": [round(float(value), 6) for value in scaler.scale_.tolist()],
         },
         "samples": [
@@ -433,8 +434,8 @@ def main() -> None:
 
     knn = Pipeline(
         steps=[
-            ("scaler", StandardScaler()),
-            ("knn", KNeighborsClassifier(n_neighbors=7, weights="distance")),
+            ("scaler", RobustScaler()),
+            ("knn", KNeighborsClassifier(n_neighbors=3, weights="distance", p=1)),
         ]
     )
     knn.fit(X_train, y_train)
@@ -443,8 +444,8 @@ def main() -> None:
     knn_cv_scores = cross_val_score(
         Pipeline(
             steps=[
-                ("scaler", StandardScaler()),
-                ("knn", KNeighborsClassifier(n_neighbors=7, weights="distance")),
+                ("scaler", RobustScaler()),
+                ("knn", KNeighborsClassifier(n_neighbors=3, weights="distance", p=1)),
             ]
         ),
         X,
@@ -538,10 +539,11 @@ def main() -> None:
         "dataset_rows": len(rows),
         "class_distribution": {str(key): value for key, value in dataset_distribution.items()},
         "best_parameters": {
-            "n_neighbors": 7,
+            "n_neighbors": 3,
             "weights": "distance",
             "metric": "minkowski",
-            "p": 2,
+            "p": 1,
+            "scaler": "RobustScaler",
         },
         "comparison_models": {
             "DecisionTreeClassifier": {

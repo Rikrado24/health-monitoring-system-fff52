@@ -1,31 +1,31 @@
 Health Classification Model Evaluation
 ==========================================
-Training date      : 2026-07-08T16:52:20.993255+00:00
+Training date      : 2026-07-08T19:58:26.880639+00:00
 Dataset rows       : 900
 Class distribution : Sehat=308, Perlu Perhatian=292, Risiko Tinggi=300
 Primary algorithm  : KNeighborsClassifier
-Best KNN params    : {"n_neighbors": 7, "weights": "distance", "metric": "minkowski", "p": 2}
+Best KNN params    : {"n_neighbors": 3, "weights": "distance", "metric": "minkowski", "p": 1, "scaler": "RobustScaler"}
 Comparison model   : DecisionTreeClassifier
 
 KNN Metrics
 -----------
-Accuracy  : 0.9167
-Precision : 0.9222
-Recall    : 0.9149
-F1-score  : 0.9159
-CV mean   : 0.9467 (+/- 0.0114)
+Accuracy  : 0.9833
+Precision : 0.9836
+Recall    : 0.9831
+F1-score  : 0.9833
+CV mean   : 0.9833 (+/- 0.0061)
 
 KNN Classification Report
 --------------------------
                  precision    recall  f1-score   support
 
-          Sehat     0.8451    0.9677    0.9023        62
-Perlu Perhatian     0.9216    0.8103    0.8624        58
-  Risiko Tinggi     1.0000    0.9667    0.9831        60
+          Sehat     0.9683    0.9839    0.9760        62
+Perlu Perhatian     0.9825    0.9655    0.9739        58
+  Risiko Tinggi     1.0000    1.0000    1.0000        60
 
-       accuracy                         0.9167       180
-      macro avg     0.9222    0.9149    0.9159       180
-   weighted avg     0.9214    0.9167    0.9163       180
+       accuracy                         0.9833       180
+      macro avg     0.9836    0.9831    0.9833       180
+   weighted avg     0.9834    0.9833    0.9833       180
 
 
 Decision Tree Comparison Metrics
@@ -51,9 +51,9 @@ Perlu Perhatian     0.9831    1.0000    0.9915        58
 
 Confusion Matrix (KNN):
 actual/predicted,Sehat,Perlu Perhatian,Risiko Tinggi
-Sehat,60,2,0
-Perlu Perhatian,11,47,0
-Risiko Tinggi,0,2,58
+Sehat,61,1,0
+Perlu Perhatian,2,56,0
+Risiko Tinggi,0,0,60
 
 Notes
 -----

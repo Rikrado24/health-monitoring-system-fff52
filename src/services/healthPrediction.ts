@@ -23,7 +23,7 @@ type KnnSample = {
 };
 
 type KnnScaler = {
-  mean: number[];
+  center: number[];
   scale: number[];
 };
 
@@ -42,6 +42,7 @@ type KnnExport = {
   class_labels: Record<string, string>;
   scaler: KnnScaler;
   samples: KnnSample[];
+  p?: number;
 };
 
 type ModelMetadata = {
@@ -149,26 +150,27 @@ const createFeatureVector = (input: PredictionInput) => [
 
 const standardizeVector = (values: number[], scaler: KnnScaler) =>
   values.map((value, index) => {
-    const mean = scaler.mean[index] ?? 0;
+    const mean = scaler.center[index] ?? 0;
     const scale = scaler.scale[index] ?? 1;
     const safeScale = Math.abs(scale) > 1e-9 ? scale : 1;
     return (value - mean) / safeScale;
   });
 
-const euclideanDistance = (left: number[], right: number[]) => {
+const minkowskiDistance = (left: number[], right: number[], p: number) => {
+  const power = Math.max(1, Number(p) || 1);
   let sum = 0;
   for (let index = 0; index < left.length; index += 1) {
-    const diff = (left[index] ?? 0) - (right[index] ?? 0);
-    sum += diff * diff;
+    const diff = Math.abs((left[index] ?? 0) - (right[index] ?? 0));
+    sum += Math.pow(diff, power);
   }
-  return Math.sqrt(sum);
+  return Math.pow(sum, 1 / power);
 };
 
 const predictWithKnn = (input: PredictionInput) => {
   const featureVector = createFeatureVector(input);
   const standardizedInput = standardizeVector(featureVector, KNN.scaler);
   const samples = Array.isArray(KNN.samples) ? KNN.samples : [];
-  const k = Math.max(1, Math.min(Number(KNN.k) || 7, samples.length || 1));
+  const k = Math.max(1, Math.min(Number(KNN.k) || 3, samples.length || 1));
 
   if (samples.length === 0) {
     const fallbackCode = deriveRuleBasedHealthStatus(input);
@@ -184,7 +186,7 @@ const predictWithKnn = (input: PredictionInput) => {
   const scoredSamples = samples
     .map((sample) => ({
       label: sample.label,
-      distance: euclideanDistance(standardizedInput, sample.values),
+      distance: minkowskiDistance(standardizedInput, sample.values, KNN.p || 1),
     }))
     .sort((left, right) => left.distance - right.distance)
     .slice(0, k);

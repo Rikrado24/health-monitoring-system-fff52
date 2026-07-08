@@ -12,8 +12,8 @@
     "steps"
   ],
   "target": "health_status",
-  "training_date": "2026-07-08T16:52:20.902435+00:00",
-  "accuracy": 0.916667,
+  "training_date": "2026-07-08T19:58:26.748530+00:00",
+  "accuracy": 0.983333,
   "dataset_rows": 900,
   "class_distribution": {
     "0": 308,
@@ -21,10 +21,11 @@
     "2": 300
   },
   "best_parameters": {
-    "n_neighbors": 7,
+    "n_neighbors": 3,
     "weights": "distance",
     "metric": "minkowski",
-    "p": 2
+    "p": 1,
+    "scaler": "RobustScaler"
   },
   "comparison_models": {
     "DecisionTreeClassifier": {
@@ -38,8 +39,8 @@
   },
   "cross_validation": {
     "KNeighborsClassifier": {
-      "mean_accuracy": 0.946667,
-      "std_accuracy": 0.01144
+      "mean_accuracy": 0.983333,
+      "std_accuracy": 0.006086
     },
     "DecisionTreeClassifier": {
       "mean_accuracy": 0.978889,

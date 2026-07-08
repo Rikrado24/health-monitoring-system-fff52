@@ -5747,7 +5747,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Machine Learning</p>
                             <h3 className="mt-1 text-base font-black text-slate-900 sm:text-lg">Prediksi Status Kesehatan</h3>
                           </div>
-                          <span className="rounded-full bg-violet-50 px-3 py-1 text-[11px] font-black text-violet-700">Decision Tree</span>
+                          <span className="rounded-full bg-violet-50 px-3 py-1 text-[11px] font-black text-violet-700">KNN</span>
                         </div>
                         <div className="mt-4 space-y-3 rounded-2xl border border-[#edf2f5] bg-slate-50/70 p-4">
                           <div>
