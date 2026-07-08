@@ -1,5 +1,5 @@
 import { addDoc, collection } from "firebase/firestore";
-import treeExport from "../generated/health_status_tree.json";
+import knnExport from "../generated/health_status_knn.json";
 import modelMetadata from "../generated/health_status_model_metadata.json";
 import labelMapping from "../generated/label_mapping.json";
 import type { HealthPredictionDoc } from "../types/storage";
@@ -17,33 +17,31 @@ type PredictionInput = {
   steps: number;
 };
 
-type TreeLeaf = {
-  type: "leaf";
-  samples: number;
-  value: number[];
-  prediction: number;
-  label: string;
-  probabilities: number[];
+type KnnSample = {
+  values: number[];
+  label: number;
 };
 
-type TreeNode = {
-  type: "node";
-  feature: string;
-  threshold: number;
-  samples: number;
-  left: TreeBranch;
-  right: TreeBranch;
+type KnnScaler = {
+  mean: number[];
+  scale: number[];
 };
 
-type TreeBranch = TreeLeaf | TreeNode;
-
-type TreeExport = {
+type KnnExport = {
   model_name: string;
   algorithm: string;
   features: string[];
   target: string;
+  k: number;
+  weights: "distance" | "uniform" | string;
+  metric: string;
+  accuracy: number;
+  dataset_rows: number;
+  training_date: string;
+  class_distribution?: Record<string, number>;
   class_labels: Record<string, string>;
-  tree: TreeBranch;
+  scaler: KnnScaler;
+  samples: KnnSample[];
 };
 
 type ModelMetadata = {
@@ -68,9 +66,9 @@ type HealthPredictionResult = {
   input: PredictionInput;
 };
 
-const TREE = treeExport as TreeExport;
+const KNN = knnExport as KnnExport;
 const METADATA = modelMetadata as ModelMetadata;
-const LABELS = labelMapping as Record<string, string>;
+const LABELS = (labelMapping as Record<string, string>) ?? {};
 
 const RECOMMENDATIONS: Record<number, string> = {
   0: "Pertahankan pola hidup sehat, aktivitas rutin, dan pemeriksaan berkala.",
@@ -122,12 +120,14 @@ const computeBmi = (heightCm: number, weightKg: number) => {
 const sanitizeInput = (input: Partial<PredictionInput> & { gender?: number | string }) => {
   const height_cm = normalizeNumber(input.height_cm);
   const weight_kg = normalizeNumber(input.weight_kg);
+  const bmiValue = normalizeNumber(input.bmi);
+
   return {
     age: Math.max(0, Math.round(normalizeNumber(input.age))),
     gender: normalizeGenderCode(input.gender),
     height_cm: Number(height_cm.toFixed(1)),
     weight_kg: Number(weight_kg.toFixed(1)),
-    bmi: normalizeNumber(input.bmi) > 0 ? Number(normalizeNumber(input.bmi).toFixed(1)) : computeBmi(height_cm, weight_kg),
+    bmi: bmiValue > 0 ? Number(bmiValue.toFixed(1)) : computeBmi(height_cm, weight_kg),
     heart_rate: Math.max(0, Number(normalizeNumber(input.heart_rate).toFixed(1))),
     systolic_bp: Math.max(0, Number(normalizeNumber(input.systolic_bp).toFixed(1))),
     diastolic_bp: Math.max(0, Number(normalizeNumber(input.diastolic_bp).toFixed(1))),
@@ -135,22 +135,119 @@ const sanitizeInput = (input: Partial<PredictionInput> & { gender?: number | str
   };
 };
 
-const evaluateTree = (node: TreeBranch, input: PredictionInput): TreeLeaf => {
-  if (node.type === "leaf") {
-    return node;
+const createFeatureVector = (input: PredictionInput) => [
+  input.age,
+  input.gender,
+  input.height_cm,
+  input.weight_kg,
+  input.bmi,
+  input.heart_rate,
+  input.systolic_bp,
+  input.diastolic_bp,
+  input.steps,
+];
+
+const standardizeVector = (values: number[], scaler: KnnScaler) =>
+  values.map((value, index) => {
+    const mean = scaler.mean[index] ?? 0;
+    const scale = scaler.scale[index] ?? 1;
+    const safeScale = Math.abs(scale) > 1e-9 ? scale : 1;
+    return (value - mean) / safeScale;
+  });
+
+const euclideanDistance = (left: number[], right: number[]) => {
+  let sum = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    const diff = (left[index] ?? 0) - (right[index] ?? 0);
+    sum += diff * diff;
+  }
+  return Math.sqrt(sum);
+};
+
+const predictWithKnn = (input: PredictionInput) => {
+  const featureVector = createFeatureVector(input);
+  const standardizedInput = standardizeVector(featureVector, KNN.scaler);
+  const samples = Array.isArray(KNN.samples) ? KNN.samples : [];
+  const k = Math.max(1, Math.min(Number(KNN.k) || 7, samples.length || 1));
+
+  if (samples.length === 0) {
+    const fallbackCode = deriveRuleBasedHealthStatus(input);
+    return {
+      code: fallbackCode,
+      confidence: 0.5,
+      probabilities: {
+        [LABELS[String(fallbackCode)] || String(fallbackCode)]: 1,
+      },
+    };
   }
 
-  const value = normalizeNumber(input[node.feature as keyof PredictionInput]);
-  return value <= node.threshold ? evaluateTree(node.left, input) : evaluateTree(node.right, input);
+  const scoredSamples = samples
+    .map((sample) => ({
+      label: sample.label,
+      distance: euclideanDistance(standardizedInput, sample.values),
+    }))
+    .sort((left, right) => left.distance - right.distance)
+    .slice(0, k);
+
+  const exactMatch = scoredSamples.find((sample) => sample.distance <= 1e-9);
+  if (exactMatch) {
+    const labelText = LABELS[String(exactMatch.label)] || String(exactMatch.label);
+    return {
+      code: exactMatch.label,
+      confidence: 1,
+      probabilities: {
+        [labelText]: 1,
+      },
+    };
+  }
+
+  const votes = new Map<number, number>();
+  let totalWeight = 0;
+
+  scoredSamples.forEach((sample) => {
+    const weight = KNN.weights === "uniform" ? 1 : 1 / Math.max(sample.distance, 1e-9);
+    totalWeight += weight;
+    votes.set(sample.label, (votes.get(sample.label) || 0) + weight);
+  });
+
+  let chosenCode = scoredSamples[0]?.label ?? 1;
+  let chosenScore = -Infinity;
+  const probabilities: Record<string, number> = {};
+
+  votes.forEach((score, label) => {
+    if (score > chosenScore) {
+      chosenScore = score;
+      chosenCode = label;
+    }
+  });
+
+  Array.from(new Set(samples.map((sample) => sample.label))).forEach((label) => {
+    const labelText = LABELS[String(label)] || String(label);
+    const score = votes.get(label) || 0;
+    probabilities[labelText] = totalWeight > 0 ? Number((score / totalWeight).toFixed(4)) : 0;
+  });
+
+  if (Object.keys(probabilities).length === 0) {
+    const labelText = LABELS[String(chosenCode)] || String(chosenCode);
+    probabilities[labelText] = 1;
+  }
+
+  const confidence = probabilities[LABELS[String(chosenCode)] || String(chosenCode)] ?? 0;
+
+  return {
+    code: chosenCode,
+    confidence,
+    probabilities,
+  };
 };
 
 export const getHealthModelMetadata = () => ({
-  modelName: METADATA.model_name || TREE.model_name || "Decision Tree Health Classifier",
-  modelAlgorithm: METADATA.algorithm || TREE.algorithm || "DecisionTreeClassifier",
-  accuracy: METADATA.accuracy || 0,
-  datasetRows: METADATA.dataset_rows || 0,
-  trainingDate: METADATA.training_date || "",
-  features: METADATA.features || TREE.features || [],
+  modelName: METADATA.model_name || KNN.model_name || "KNN Health Classifier",
+  modelAlgorithm: METADATA.algorithm || KNN.algorithm || "KNeighborsClassifier",
+  accuracy: METADATA.accuracy || KNN.accuracy || 0,
+  datasetRows: METADATA.dataset_rows || KNN.dataset_rows || 0,
+  trainingDate: METADATA.training_date || KNN.training_date || "",
+  features: METADATA.features || KNN.features || [],
 });
 
 export function normalizeHealthPredictionInput(input: Partial<PredictionInput> & { gender?: number | string }) {
@@ -159,26 +256,19 @@ export function normalizeHealthPredictionInput(input: Partial<PredictionInput> &
 
 export function predictHealthStatus(input: Partial<PredictionInput> & { gender?: number | string }): HealthPredictionResult {
   const sanitized = sanitizeInput(input);
-  const leaf = evaluateTree(TREE.tree, sanitized);
-  const predictedCode = leaf.prediction;
-  const ruleBasedCode = deriveRuleBasedHealthStatus(sanitized);
-  const chosenCode = predictedCode === ruleBasedCode || (leaf.samples >= 8 && Math.max(...leaf.probabilities) >= 0.7) ? predictedCode : ruleBasedCode;
-  const label = LABELS[String(chosenCode)] || leaf.label || `Class ${chosenCode}`;
-  const probabilities = leaf.probabilities.reduce<Record<string, number>>((result, probability, index) => {
-    result[LABELS[String(index)] || String(index)] = probability;
-    return result;
-  }, {});
-  const chosenProbability = leaf.probabilities[chosenCode] ?? Math.max(...leaf.probabilities);
+  const result = predictWithKnn(sanitized);
+  const label = LABELS[String(result.code)] || KNN.class_labels[String(result.code)] || `Class ${result.code}`;
+  const confidence = Number((result.confidence || 0).toFixed(4));
 
   return {
-    healthStatusCode: chosenCode,
+    healthStatusCode: result.code,
     healthStatusLabel: label,
-    recommendation: RECOMMENDATIONS[chosenCode] || RECOMMENDATIONS[1],
-    modelName: METADATA.model_name || TREE.model_name || "Decision Tree Health Classifier",
-    modelAlgorithm: METADATA.algorithm || TREE.algorithm || "DecisionTreeClassifier",
-    accuracy: METADATA.accuracy || 0,
-    confidence: Number((chosenCode === predictedCode ? Math.max(...leaf.probabilities) : Math.max(chosenProbability, 0.55)).toFixed(4)),
-    probabilities,
+    recommendation: RECOMMENDATIONS[result.code] || RECOMMENDATIONS[1],
+    modelName: METADATA.model_name || KNN.model_name || "KNN Health Classifier",
+    modelAlgorithm: METADATA.algorithm || KNN.algorithm || "KNeighborsClassifier",
+    accuracy: METADATA.accuracy || KNN.accuracy || 0,
+    confidence,
+    probabilities: result.probabilities,
     input: sanitized,
   };
 }

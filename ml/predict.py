@@ -117,15 +117,15 @@ def predict_health_status(features: dict[str, float]) -> dict[str, Any]:
             1: "Perbaiki pola makan, tidur, dan aktivitas, lalu pantau ulang hasilnya.",
             2: "Segera konsultasikan ke tenaga medis dan lakukan pemantauan lebih sering.",
         }[predicted_code],
-        "model_name": metadata.get("model_name", "Decision Tree Health Classifier"),
-        "model_algorithm": metadata.get("algorithm", "DecisionTreeClassifier"),
+        "model_name": metadata.get("model_name", "KNN Health Classifier"),
+        "model_algorithm": metadata.get("algorithm", "KNeighborsClassifier"),
         "accuracy": float(metadata.get("accuracy", 0.0)),
         "input": features,
     }
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Predict health status using the trained decision tree model.")
+    parser = argparse.ArgumentParser(description="Predict health status using the trained KNN model.")
     parser.add_argument("--input-json", help="Inline JSON payload with the feature values.")
     parser.add_argument("--input-file", help="Path to a JSON file containing the feature values.")
     parser.add_argument("--age", type=float, help="Age in years.")

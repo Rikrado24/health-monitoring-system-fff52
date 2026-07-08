@@ -1,4 +1,4 @@
 actual/predicted,Sehat,Perlu Perhatian,Risiko Tinggi
-Sehat,61,1,0
-Perlu Perhatian,0,58,0
-Risiko Tinggi,0,0,60
+Sehat,60,2,0
+Perlu Perhatian,11,47,0
+Risiko Tinggi,0,2,58

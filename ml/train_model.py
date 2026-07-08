@@ -25,10 +25,12 @@ REPORT_DIR = ROOT / "ml" / "reports"
 SRC_GENERATED_DIR = ROOT / "src" / "generated"
 DATASET_PATH = DATASET_DIR / "health_classification_dataset.csv"
 MODEL_PATH = MODEL_DIR / "health_status_model.joblib"
+KNN_EXPORT_PATH = MODEL_DIR / "health_status_knn.json"
 LABEL_MAPPING_PATH = MODEL_DIR / "label_mapping.json"
 METADATA_PATH = MODEL_DIR / "model_metadata.json"
 TREE_EXPORT_PATH = MODEL_DIR / "health_status_tree.json"
 TREE_EXPORT_SRC_PATH = SRC_GENERATED_DIR / "health_status_tree.json"
+KNN_EXPORT_SRC_PATH = SRC_GENERATED_DIR / "health_status_knn.json"
 LABEL_MAPPING_SRC_PATH = SRC_GENERATED_DIR / "label_mapping.json"
 METADATA_SRC_PATH = SRC_GENERATED_DIR / "health_status_model_metadata.json"
 REPORT_PATH = REPORT_DIR / "evaluation_report.txt"
@@ -289,6 +291,45 @@ def tree_to_json(model: DecisionTreeClassifier) -> dict[str, Any]:
     }
 
 
+def knn_to_json(
+    model: Pipeline,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    accuracy: float,
+    dataset_rows: int,
+    dataset_distribution: dict[int, int],
+) -> dict[str, Any]:
+    scaler: StandardScaler = model.named_steps["scaler"]
+    knn: KNeighborsClassifier = model.named_steps["knn"]
+    scaled_samples = scaler.transform(x_train)
+
+    return {
+        "model_name": "KNN Health Classifier",
+        "algorithm": "KNeighborsClassifier",
+        "features": FEATURES,
+        "target": "health_status",
+        "k": int(knn.n_neighbors),
+        "weights": str(knn.weights),
+        "metric": str(knn.metric),
+        "training_date": datetime.now(timezone.utc).isoformat(),
+        "accuracy": round(float(accuracy), 6),
+        "dataset_rows": dataset_rows,
+        "class_distribution": {str(key): value for key, value in dataset_distribution.items()},
+        "class_labels": {str(key): value for key, value in CLASS_LABELS.items()},
+        "scaler": {
+            "mean": [round(float(value), 6) for value in scaler.mean_.tolist()],
+            "scale": [round(float(value), 6) for value in scaler.scale_.tolist()],
+        },
+        "samples": [
+            {
+                "values": [round(float(value), 6) for value in sample.tolist()],
+                "label": int(label),
+            }
+            for sample, label in zip(scaled_samples, y_train.tolist(), strict=True)
+        ],
+    }
+
+
 def build_confusion_matrix_csv(matrix: np.ndarray) -> None:
     labels = [CLASS_LABELS[index] for index in sorted(CLASS_LABELS)]
     with CONFUSION_MATRIX_PATH.open("w", newline="", encoding="utf-8") as handle:
@@ -319,7 +360,7 @@ def build_evaluation_report(
     knn_cv_std: float,
 ) -> str:
     labels = [CLASS_LABELS[index] for index in sorted(CLASS_LABELS)]
-    matrix_lines = ["Confusion Matrix (Decision Tree):"]
+    matrix_lines = ["Confusion Matrix (KNN):"]
     matrix_lines.append("actual/predicted," + ",".join(labels))
     for label, row in zip(labels, tree_matrix.tolist(), strict=True):
         matrix_lines.append(label + "," + ",".join(str(int(value)) for value in row))
@@ -331,39 +372,39 @@ def build_evaluation_report(
             f"Training date      : {datetime.now(timezone.utc).isoformat()}",
             f"Dataset rows       : {dataset_rows}",
             f"Class distribution : Sehat={dataset_distribution.get(0, 0)}, Perlu Perhatian={dataset_distribution.get(1, 0)}, Risiko Tinggi={dataset_distribution.get(2, 0)}",
-            f"Primary algorithm  : DecisionTreeClassifier",
-            f"Best tree params   : {json.dumps(decision_tree_params, ensure_ascii=False)}",
-            f"Comparison model   : KNeighborsClassifier",
+            f"Primary algorithm  : KNeighborsClassifier",
+            f"Best KNN params    : {json.dumps(decision_tree_params, ensure_ascii=False)}",
+            f"Comparison model   : DecisionTreeClassifier",
             "",
-            "Decision Tree Metrics",
-            "-" * 22,
+            "KNN Metrics",
+            "-" * 11,
             f"Accuracy  : {tree_accuracy:.4f}",
             f"Precision : {tree_precision:.4f}",
             f"Recall    : {tree_recall:.4f}",
             f"F1-score  : {tree_f1:.4f}",
             f"CV mean   : {tree_cv_mean:.4f} (+/- {tree_cv_std:.4f})",
             "",
-            "Decision Tree Classification Report",
-            "-" * 36,
+            "KNN Classification Report",
+            "-" * 26,
             tree_report,
             "",
-            "KNN Comparison Metrics",
-            "-" * 22,
+            "Decision Tree Comparison Metrics",
+            "-" * 32,
             f"Accuracy  : {knn_accuracy:.4f}",
             f"Precision : {knn_precision:.4f}",
             f"Recall    : {knn_recall:.4f}",
             f"F1-score  : {knn_f1:.4f}",
             f"CV mean   : {knn_cv_mean:.4f} (+/- {knn_cv_std:.4f})",
             "",
-            "KNN Classification Report",
-            "-" * 26,
+            "Decision Tree Classification Report",
+            "-" * 36,
             knn_report,
             "",
             *matrix_lines,
             "",
             "Notes",
             "-" * 5,
-            "Decision Tree dipilih sebagai model utama untuk dashboard dan prediksi frontend.",
+            "KNN dipilih sebagai model utama untuk dashboard dan prediksi frontend.",
         ]
     )
 
@@ -390,6 +431,28 @@ def main() -> None:
 
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
+    knn = Pipeline(
+        steps=[
+            ("scaler", StandardScaler()),
+            ("knn", KNeighborsClassifier(n_neighbors=7, weights="distance")),
+        ]
+    )
+    knn.fit(X_train, y_train)
+    knn_predictions = knn.predict(X_test)
+    knn_probability = knn.predict_proba(X_test)
+    knn_cv_scores = cross_val_score(
+        Pipeline(
+            steps=[
+                ("scaler", StandardScaler()),
+                ("knn", KNeighborsClassifier(n_neighbors=7, weights="distance")),
+            ]
+        ),
+        X,
+        y,
+        cv=cv,
+        scoring="accuracy",
+    )
+
     tree_search = GridSearchCV(
         estimator=DecisionTreeClassifier(random_state=42, class_weight="balanced"),
         param_grid={
@@ -406,15 +469,6 @@ def main() -> None:
     decision_tree = tree_search.best_estimator_
     tree_predictions = decision_tree.predict(X_test)
     tree_probability = decision_tree.predict_proba(X_test)
-
-    knn = Pipeline(
-        steps=[
-            ("scaler", StandardScaler()),
-            ("knn", KNeighborsClassifier(n_neighbors=7, weights="distance")),
-        ]
-    )
-    knn.fit(X_train, y_train)
-    knn_predictions = knn.predict(X_test)
     tree_cv_scores = cross_val_score(
         decision_tree,
         X,
@@ -422,37 +476,17 @@ def main() -> None:
         cv=cv,
         scoring="accuracy",
     )
-    knn_cv_scores = cross_val_score(
-        Pipeline(
-            steps=[
-                ("scaler", StandardScaler()),
-                ("knn", KNeighborsClassifier(n_neighbors=7, weights="distance")),
-            ]
-        ),
-        X,
-        y,
-        cv=cv,
-        scoring="accuracy",
-    )
 
-    tree_accuracy = accuracy_score(y_test, tree_predictions)
     knn_accuracy = accuracy_score(y_test, knn_predictions)
+    tree_accuracy = accuracy_score(y_test, tree_predictions)
 
-    tree_precision, tree_recall, tree_f1, _ = precision_recall_fscore_support(
-        y_test, tree_predictions, average="macro", zero_division=0
-    )
     knn_precision, knn_recall, knn_f1, _ = precision_recall_fscore_support(
         y_test, knn_predictions, average="macro", zero_division=0
     )
-
-    tree_report = classification_report(
-        y_test,
-        tree_predictions,
-        labels=sorted(CLASS_LABELS),
-        target_names=[CLASS_LABELS[index] for index in sorted(CLASS_LABELS)],
-        digits=4,
-        zero_division=0,
+    tree_precision, tree_recall, tree_f1, _ = precision_recall_fscore_support(
+        y_test, tree_predictions, average="macro", zero_division=0
     )
+
     knn_report = classification_report(
         y_test,
         knn_predictions,
@@ -461,52 +495,76 @@ def main() -> None:
         digits=4,
         zero_division=0,
     )
+    tree_report = classification_report(
+        y_test,
+        tree_predictions,
+        labels=sorted(CLASS_LABELS),
+        target_names=[CLASS_LABELS[index] for index in sorted(CLASS_LABELS)],
+        digits=4,
+        zero_division=0,
+    )
 
+    knn_matrix = confusion_matrix(y_test, knn_predictions, labels=sorted(CLASS_LABELS))
     tree_matrix = confusion_matrix(y_test, tree_predictions, labels=sorted(CLASS_LABELS))
-    build_confusion_matrix_csv(tree_matrix)
+    build_confusion_matrix_csv(knn_matrix)
 
     model_payload = {
-        "model": decision_tree,
+        "model": knn,
         "feature_order": FEATURES,
         "class_labels": CLASS_LABELS,
-        "tree_probability_sample": tree_probability[:5].tolist(),
+        "knn_probability_sample": knn_probability[:5].tolist(),
     }
     joblib.dump(model_payload, MODEL_PATH)
 
     label_mapping = {str(key): value for key, value in CLASS_LABELS.items()}
     LABEL_MAPPING_PATH.write_text(json.dumps(label_mapping, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    knn_export = knn_to_json(
+        model=knn,
+        x_train=X_train,
+        y_train=y_train,
+        accuracy=knn_accuracy,
+        dataset_rows=len(rows),
+        dataset_distribution=dataset_distribution,
+    )
+    KNN_EXPORT_PATH.write_text(json.dumps(knn_export, indent=2, ensure_ascii=False), encoding="utf-8")
+
     metadata = {
-        "algorithm": "DecisionTreeClassifier",
+        "algorithm": "KNeighborsClassifier",
         "features": FEATURES,
         "target": "health_status",
         "training_date": datetime.now(timezone.utc).isoformat(),
-        "accuracy": round(float(tree_accuracy), 6),
+        "accuracy": round(float(knn_accuracy), 6),
         "dataset_rows": len(rows),
         "class_distribution": {str(key): value for key, value in dataset_distribution.items()},
-        "best_parameters": tree_search.best_params_,
+        "best_parameters": {
+            "n_neighbors": 7,
+            "weights": "distance",
+            "metric": "minkowski",
+            "p": 2,
+        },
         "comparison_models": {
-            "KNeighborsClassifier": {
-                "accuracy": round(float(knn_accuracy), 6),
-                "precision": round(float(knn_precision), 6),
-                "recall": round(float(knn_recall), 6),
-                "f1_score": round(float(knn_f1), 6),
-                "cv_mean_accuracy": round(float(knn_cv_scores.mean()), 6),
-                "cv_std_accuracy": round(float(knn_cv_scores.std()), 6),
+            "DecisionTreeClassifier": {
+                "accuracy": round(float(tree_accuracy), 6),
+                "precision": round(float(tree_precision), 6),
+                "recall": round(float(tree_recall), 6),
+                "f1_score": round(float(tree_f1), 6),
+                "cv_mean_accuracy": round(float(tree_cv_scores.mean()), 6),
+                "cv_std_accuracy": round(float(tree_cv_scores.std()), 6),
             }
         },
         "cross_validation": {
-            "DecisionTreeClassifier": {
-                "mean_accuracy": round(float(tree_cv_scores.mean()), 6),
-                "std_accuracy": round(float(tree_cv_scores.std()), 6),
-            },
             "KNeighborsClassifier": {
                 "mean_accuracy": round(float(knn_cv_scores.mean()), 6),
                 "std_accuracy": round(float(knn_cv_scores.std()), 6),
             },
+            "DecisionTreeClassifier": {
+                "mean_accuracy": round(float(tree_cv_scores.mean()), 6),
+                "std_accuracy": round(float(tree_cv_scores.std()), 6),
+            },
         },
         "label_mapping": label_mapping,
-        "model_name": "Decision Tree Health Classifier",
+        "model_name": "KNN Health Classifier",
     }
     METADATA_PATH.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -515,36 +573,38 @@ def main() -> None:
 
     copy_text_file(TREE_EXPORT_PATH, TREE_EXPORT_SRC_PATH)
     copy_text_file(LABEL_MAPPING_PATH, LABEL_MAPPING_SRC_PATH)
+    copy_text_file(KNN_EXPORT_PATH, KNN_EXPORT_SRC_PATH)
     METADATA_SRC_PATH.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
 
     report = build_evaluation_report(
         dataset_rows=len(rows),
         dataset_distribution=dataset_distribution,
-        decision_tree_params=tree_search.best_params_,
-        tree_accuracy=float(tree_accuracy),
-        tree_precision=float(tree_precision),
-        tree_recall=float(tree_recall),
-        tree_f1=float(tree_f1),
-        tree_report=tree_report,
-        tree_matrix=tree_matrix,
-        knn_accuracy=float(knn_accuracy),
-        knn_precision=float(knn_precision),
-        knn_recall=float(knn_recall),
-        knn_f1=float(knn_f1),
-        knn_report=knn_report,
-        tree_cv_mean=float(tree_cv_scores.mean()),
-        tree_cv_std=float(tree_cv_scores.std()),
-        knn_cv_mean=float(knn_cv_scores.mean()),
-        knn_cv_std=float(knn_cv_scores.std()),
+        decision_tree_params=metadata["best_parameters"],
+        tree_accuracy=float(knn_accuracy),
+        tree_precision=float(knn_precision),
+        tree_recall=float(knn_recall),
+        tree_f1=float(knn_f1),
+        tree_report=knn_report,
+        tree_matrix=knn_matrix,
+        knn_accuracy=float(tree_accuracy),
+        knn_precision=float(tree_precision),
+        knn_recall=float(tree_recall),
+        knn_f1=float(tree_f1),
+        knn_report=tree_report,
+        tree_cv_mean=float(knn_cv_scores.mean()),
+        tree_cv_std=float(knn_cv_scores.std()),
+        knn_cv_mean=float(tree_cv_scores.mean()),
+        knn_cv_std=float(tree_cv_scores.std()),
     )
     REPORT_PATH.write_text(report, encoding="utf-8")
 
     print("Training complete")
     print(f"Dataset rows: {len(rows)}")
-    print(f"Decision Tree accuracy: {tree_accuracy:.4f}")
     print(f"KNN accuracy: {knn_accuracy:.4f}")
+    print(f"Decision Tree accuracy: {tree_accuracy:.4f}")
     print(f"Model saved to: {MODEL_PATH}")
     print(f"Tree export saved to: {TREE_EXPORT_PATH}")
+    print(f"KNN export saved to: {KNN_EXPORT_PATH}")
     print(f"Report saved to: {REPORT_PATH}")
 
 

@@ -189,10 +189,10 @@ const buildGreetingReply = (question: string, context: EducationContext) => {
       : "Halo";
 
   return [
-    `Ringkasan: ${salutation}${namePart}, senang ketemu Anda.`,
-    `Data: Saya siap bantu membaca data kesehatan Anda yang tersedia di dashboard, seperti BMI, tekanan darah, detak jantung, aktivitas, hidrasi, dan pola makan.`,
-    `Saran: Silakan lanjutkan dengan pertanyaan kesehatan apa pun, misalnya "bagaimana kondisi saya hari ini" atau "apa arti tekanan darah saya?"`,
-    `Catatan: Kalau Anda mau, saya juga bisa bantu jelaskan data satu per satu dengan lebih pelan dan detail.`,
+    `${salutation}${namePart}, senang ketemu Anda.`,
+    `Saya siap bantu membaca data kesehatan Anda yang tersedia di dashboard, seperti BMI, tekanan darah, detak jantung, aktivitas, hidrasi, pola makan, dan tidur.`,
+    `Silakan lanjutkan dengan pertanyaan kesehatan apa pun, misalnya "bagaimana kondisi saya hari ini" atau "apa arti tekanan darah saya?"`,
+    `Kalau Anda mau, saya juga bisa jelaskan data satu per satu dengan lebih pelan dan detail.`,
   ].join("\n");
 };
 
@@ -284,6 +284,14 @@ const isHealthRelatedQuestion = (question: string, history: ChatHistoryEntry[]) 
 const isMeaningfulValue = (value?: string) => Boolean(value && value.trim() && value.trim() !== "-");
 
 const compactText = (value: string) => value.trim().replace(/\s+/g, " ");
+
+const stripHealthOpening = (value: string) => {
+  let result = value.trim();
+  result = result.replace(/^(?:halo|hallo|hai|hey|hello|selamat (?:pagi|siang|sore|malam))(?:,?\s*[^\n.!?]*)?[.!?\s]*/i, "");
+  result = result.replace(/^(?:saya (?:mengerti|paham|tangkap)[^.\n!?]*[.!?\s]*)/i, "");
+  result = result.replace(/^(?:anda ingin tahu[^.\n!?]*[.!?\s]*)/i, "");
+  return result.trim();
+};
 
 const collectDataLines = (context: EducationContext) => {
   const analysis = context.analysis;
@@ -465,13 +473,15 @@ const buildContextualFallbackReply = (input: Omit<GenerateEducationReplyInput, "
       .find((value) => Boolean(value)) ||
     "";
   const opening =
-    topic.topic === "umum"
-      ? mentionsToday
-        ? asksMostChangedToday
-          ? `Perubahan paling menonjol hari ini adalah ${compactText(strongestChangeSummary || "belum ada perubahan yang cukup jelas untuk disimpulkan")}.`
-          : `Berdasarkan data hari ini dan perbandingan dengan riwayat terakhir, kondisi Anda ${analysis.overallStatus.toLowerCase()}.`
-        : `Berdasarkan data terbaru dan riwayat yang masuk, kondisi Anda ${analysis.overallStatus.toLowerCase()}.`
-      : `Saya tangkap, ini terkait ${topic.label.toLowerCase()} dan saya lihat dari riwayat datanya kondisi Anda ${analysis.overallStatus.toLowerCase()}.`;
+    analysis.overallStatus === "Belum ada data"
+      ? "Saya belum bisa menilai kondisi Anda karena data kesehatan belum masuk."
+      : topic.topic === "umum"
+        ? mentionsToday
+          ? asksMostChangedToday
+            ? `Perubahan paling menonjol hari ini adalah ${compactText(strongestChangeSummary || "belum ada perubahan yang cukup jelas untuk disimpulkan")}.`
+            : `Berdasarkan data hari ini dan perbandingan dengan riwayat terakhir, kondisi Anda ${analysis.overallStatus.toLowerCase()}.`
+          : `Berdasarkan data terbaru dan riwayat yang masuk, kondisi Anda ${analysis.overallStatus.toLowerCase()}.`
+        : `Saya tangkap, ini terkait ${topic.label.toLowerCase()} dan saya lihat dari riwayat datanya kondisi Anda ${analysis.overallStatus.toLowerCase()}.`;
   const guidance = compactText(buildGuidanceByTopic(topic, input.context));
   const extras = analysis.overallRecommendation ? compactText(analysis.overallRecommendation) : "";
   const missingNote = missingData.length > 0 ? `Data yang masih kurang: ${missingData.slice(0, 4).join(", ")}.` : "Data pendukung sudah cukup untuk ringkasan dasar.";
@@ -484,11 +494,15 @@ const buildContextualFallbackReply = (input: Omit<GenerateEducationReplyInput, "
       : "";
 
   return [
-    `Ringkasan: ${opening} ${trendNote || ""} ${mostChangedNote || ""}`.trim(),
-    `Data: ${dataSummary}. Riwayat terbaru: ${historySummary}. ${missingNote}`.trim(),
-    `Saran: ${guidance}${extras ? ` ${extras}` : ""}`.trim(),
-    `Catatan: ${analysis.overallStatus !== "Baik" ? "Kalau ada nyeri dada, sesak, pusing berat, lemas sekali, atau pingsan, segera periksa ke tenaga medis." : "Kalau kondisinya stabil, pertahankan kebiasaan baik dan pantau rutin."}`,
-  ].join("\n");
+    `${opening} ${trendNote || ""} ${mostChangedNote || ""}`.trim(),
+    `Jawaban ini didukung oleh ${dataSummary}. Riwayat terbaru: ${historySummary}. ${missingNote}`.trim(),
+    `${guidance}${extras ? ` ${extras}` : ""}`.trim(),
+    analysis.overallStatus !== "Baik"
+      ? "Kalau ada nyeri dada, sesak, pusing berat, lemas sekali, atau pingsan, segera periksa ke tenaga medis."
+      : "Kalau kondisinya stabil, pertahankan kebiasaan baik dan pantau rutin.",
+  ]
+    .filter((line) => line.trim().length > 0)
+    .join("\n");
 };
 
 const buildEducationPrompt = (input: Omit<GenerateEducationReplyInput, "onUpdate"> & { topic: TopicAnalysis }) => `
@@ -500,6 +514,8 @@ Kalau pertanyaan masih seputar kesehatan, prioritaskan data pengguna yang tersed
 Jika data kurang, akui dengan jujur dan minta parameter yang dibutuhkan tanpa mengarang data.
 Jika merujuk web, prioritaskan sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.
 Untuk pertanyaan umum seperti "bagaimana kesehatan saya", jelaskan status keseluruhan, data yang paling berpengaruh, perubahan dari riwayat, data yang masih kurang, dan 1-2 langkah praktis yang bisa dilakukan hari ini.
+Untuk pertanyaan seperti "bagaimana keadaan kesehatan saya", langsung mulai dengan klasifikasi kondisi tanpa salam atau pembuka panjang.
+Jika data kesehatan belum masuk atau statusnya "Belum ada data", jangan menyimpulkan kondisi baik; bilang jujur bahwa data belum cukup untuk menilai.
 
 Fokus topik:
 - Topik terdeteksi: ${input.topic.label}
@@ -580,13 +596,8 @@ Gaya jawaban:
 
 Aturan jawaban:
 - Jawab inti pertanyaan dulu, lalu beri saran praktis singkat.
-- Wajib pakai format berikut dan jangan diubah:
-  Ringkasan: ...
-  Data: ...
-  Saran: ...
-  Catatan: ...
-- Setiap bagian cukup 1 sampai 2 kalimat pendek.
-- Jika pertanyaannya umum tentang kondisi kesehatan, boleh buat jawaban sedikit lebih panjang agar terasa detail dan peka konteks.
+- Jangan gunakan label seperti "Ringkasan", "Data", "Saran", atau "Catatan"; jawaban harus langsung natural dan mengalir.
+- Jika pertanyaannya umum tentang kondisi kesehatan, mulai langsung dengan klasifikasi kondisi, lalu sebutkan data yang paling menentukan dan langkah singkat.
 - Jangan menulis saran umum yang tidak menyebut data pendukungnya.
 - Jangan menyalin teks konteks mentah.
 - Kalau jawaban mulai keluar dari konteks kesehatan, kembali ke edukasi kesehatan.
@@ -621,6 +632,15 @@ export async function generateEducationReply(input: GenerateEducationReplyInput)
   }
 
   const topic = analyzeEducationTopic(input.question);
+  if (input.context.analysis.dataAvailability === "Belum ada data") {
+    return {
+      answer: buildContextualFallbackReply(input, topic),
+      grounded: false,
+      sources: [] as EducationWebSource[],
+      searchQueries: [] as string[],
+      searchEntryPointHtml: "",
+    };
+  }
   const prompt = buildEducationPrompt({ ...input, topic });
   try {
     const { GoogleAIBackend, getAI, getGenerativeModel } = await import("firebase/ai");
@@ -650,7 +670,8 @@ export async function generateEducationReply(input: GenerateEducationReplyInput)
     const searchQueries = groundingMetadata?.webSearchQueries?.map((query) => query.trim()).filter(Boolean) || [];
     const searchEntryPointHtml = groundingMetadata?.searchEntryPoint?.renderedContent?.trim() || "";
     const cleaned = responseText.trim();
-    if (!cleaned || (/(?:Male|Female|Height|Weight)/i.test(cleaned) && cleaned.length < 80)) {
+    const normalizedAnswer = isGreetingQuestion(input.question) ? cleaned : stripHealthOpening(cleaned);
+    if (!normalizedAnswer || (/(?:Male|Female|Height|Weight)/i.test(normalizedAnswer) && normalizedAnswer.length < 80)) {
       return {
         answer: buildContextualFallbackReply(input, topic),
         grounded: false,
@@ -661,7 +682,7 @@ export async function generateEducationReply(input: GenerateEducationReplyInput)
     }
 
     return {
-      answer: cleaned,
+      answer: normalizedAnswer,
       grounded: sources.length > 0,
       sources,
       searchQueries,

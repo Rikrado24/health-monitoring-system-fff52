@@ -6,7 +6,8 @@ export type EducationHealthAnalysis = {
   sleepStatus: "Cukup" | "Kurang" | "Berlebih" | "Belum ada data";
   bloodPressureStatus: "Rendah" | "Normal" | "Waspada" | "Tinggi" | "Belum ada data";
   heartRateStatus: "Rendah" | "Normal" | "Tinggi" | "Belum ada data";
-  overallStatus: "Baik" | "Perlu dipantau" | "Perlu perhatian";
+  dataAvailability: "Belum ada data" | "Terbatas" | "Cukup";
+  overallStatus: "Baik" | "Perlu dipantau" | "Perlu perhatian" | "Belum ada data";
   overallRecommendation: string;
   educationalNotes: string[];
 };
@@ -71,6 +72,7 @@ export type EducationPromptContext = {
   bloodPressureStatus: string;
   heartRate: string;
   heartRateStatus: string;
+  dataAvailability: string;
   activitySummary: string;
   mealSummary: string;
   hydrationSummary: string;
@@ -87,6 +89,7 @@ export type EducationPromptContext = {
   recentSleepComparisonSummary: string;
   recentHeartRateSummary: string;
   recentMostChangedSummary: string;
+  predictionSummary: string;
 };
 
 export type EducationContext = {
