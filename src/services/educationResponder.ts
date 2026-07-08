@@ -101,58 +101,58 @@ const GENERAL_HEALTH_KEYWORDS = [
 ];
 
 const REFUSAL_MESSAGE =
-  "Maaf, saya hanya bisa membantu edukasi seputar kesehatan. Kalau Anda mau, silakan kirim pertanyaan tentang gejala, pola makan, aktivitas, hidrasi, BMI, atau tekanan darah.";
+  "Maaf, saya hanya bisa membantu edukasi seputar kesehatan. Kalau mau, kirim pertanyaan tentang gejala, pola makan, aktivitas, hidrasi, BMI, atau tekanan darah, lalu saya bantu jelaskan dengan bahasa yang sederhana.";
 
 const TOPIC_KEYWORDS: Array<{ topic: EducationTopic; label: string; keywords: string[]; focus: string; guidance: string }> = [
   {
     topic: "tekanan_darah",
     label: "Tekanan darah",
     keywords: ["tekanan darah", "tensi", "hipertensi", "hipotensi", "mmhg", "sistolik", "diastolik", "darah saya"],
-    focus: "Fokus pada angka tekanan darah, statusnya, dan langkah sederhana yang bisa dilakukan hari ini.",
-    guidance: "Jelaskan apakah angkanya cenderung aman, perlu dipantau, atau perlu perhatian lebih.",
+    focus: "Fokus pada angka tekanan darah, statusnya, arti praktisnya, dan langkah yang aman dilakukan hari ini.",
+    guidance: "Jelaskan apakah angkanya cenderung aman, perlu dipantau, atau perlu perhatian lebih, lalu beri 1 langkah konkret.",
   },
   {
     topic: "detak_jantung",
     label: "Detak jantung",
     keywords: ["detak jantung", "jantung", "bpm", "nadi", "denyut"],
-    focus: "Fokus pada detak jantung, apakah masih wajar, dan kapan perlu waspada.",
-    guidance: "Bandingkan dengan status yang ada dan beri saran singkat yang terasa praktis.",
+    focus: "Fokus pada detak jantung, apakah masih wajar, arti statusnya, dan kapan perlu waspada.",
+    guidance: "Bandingkan dengan status yang ada, lalu beri saran singkat yang aman dan mudah dilakukan.",
   },
   {
     topic: "bmi_berat",
     label: "BMI dan berat badan",
     keywords: ["bmi", "berat badan", "kurus", "gemuk", "obesitas", "tinggi badan", "bb", "tb", "badan saya"],
-    focus: "Fokus pada BMI, berat badan, dan tinggi badan kalau relevan.",
-    guidance: "Jawab langsung apakah pengelolaannya perlu dijaga, dinaikkan, atau diturunkan secara bertahap.",
+    focus: "Fokus pada BMI, berat badan, tinggi badan, dan arah perubahan yang sehat secara bertahap.",
+    guidance: "Jawab langsung apakah pengelolaannya perlu dijaga, dinaikkan, atau diturunkan secara bertahap, lalu beri target kecil.",
   },
   {
     topic: "aktivitas",
     label: "Aktivitas",
     keywords: ["aktivitas", "langkah", "jalan", "lari", "sepeda", "olahraga", "gerak", "exercise"],
-    focus: "Fokus pada aktivitas harian, jumlah langkah, dan apakah geraknya sudah cukup.",
-    guidance: "Beri saran yang realistis dan mudah dilakukan hari ini.",
+    focus: "Fokus pada aktivitas harian, jumlah langkah, dan apakah geraknya sudah cukup untuk hari ini.",
+    guidance: "Beri saran yang realistis, spesifik, dan mudah dilakukan hari ini.",
   },
   {
     topic: "pola_makan",
     label: "Pola makan",
     keywords: ["makan", "pola makan", "kalori", "gizi", "karbo", "protein", "lemak", "serat", "sarapan", "siang", "malam"],
     focus: "Fokus pada pola makan dan kaitannya dengan kondisi kesehatan yang ditanyakan.",
-    guidance: "Gunakan bahasa yang akrab dan beri 1 saran makan yang sederhana.",
+    guidance: "Gunakan bahasa yang akrab, sebutkan dampaknya, dan beri 1 saran makan yang sederhana.",
   },
   {
     topic: "hidrasi",
     label: "Hidrasi",
     keywords: ["hidrasi", "minum", "air", "dehidrasi", "gelas air", "minum air"],
     focus: "Fokus pada asupan air dan apakah jumlahnya sudah cukup untuk hari ini.",
-    guidance: "Beri saran praktis yang ringan dan mudah diingat.",
+    guidance: "Beri saran praktis yang ringan, mudah diingat, dan mudah dijalankan hari ini.",
   },
 ];
 
 const DEFAULT_TOPIC: TopicAnalysis = {
   topic: "umum",
   label: "Edukasi umum",
-  focus: "Fokus pada inti pertanyaan dan hubungkan dengan data kesehatan yang paling relevan.",
-  guidance: "Kalau pertanyaannya terlalu umum, jawab dengan arah yang paling berguna lalu beri langkah berikutnya yang jelas.",
+  focus: "Fokus pada inti pertanyaan, hubungkan dengan data kesehatan yang paling relevan, dan bantu user mengambil langkah berikutnya.",
+  guidance: "Kalau pertanyaannya terlalu umum, jawab dengan arah yang paling berguna lalu beri langkah berikutnya yang jelas dan aman.",
 };
 
 export const analyzeEducationTopic = (question: string): TopicAnalysis => {
@@ -258,6 +258,16 @@ const buildAvailableDataLines = (analysis: EducationHealthAnalysis, context: Edu
   return items.filter(Boolean);
 };
 
+const buildReplyStyleGuide = (analysis: EducationHealthAnalysis) => [
+  `Gunakan nada hangat dan tenang seperti sedang mengedukasi teman.`,
+  `Jangan menulis diagnosis pasti.`,
+  `Sebutkan minimal 2 data relevan kalau memang tersedia, misalnya BMI, tekanan darah, detak jantung, aktivitas, atau hidrasi.`,
+  `Selalu tutup dengan langkah sederhana yang bisa dilakukan hari ini.`,
+  analysis.overallStatus !== "Baik"
+    ? `Jika ada tanda bahaya seperti nyeri dada, sesak, pusing berat, lemas sekali, atau pingsan, sarankan segera periksa ke tenaga medis.`
+    : `Kalau kondisinya baik, tekankan kebiasaan yang perlu dipertahankan agar tetap stabil.`,
+];
+
 const buildMissingDataLines = (context: EducationContext) => {
   const items = [
     !isMeaningfulValue(context.educationContext.height) || !isMeaningfulValue(context.educationContext.weight)
@@ -281,23 +291,25 @@ const buildGeneralHealthReply = (input: Omit<GenerateEducationReplyInput, "onUpd
   const keyNote = analysis.educationalNotes.find((note) => note.toLowerCase().includes(analysis.overallStatus.toLowerCase()))
     || analysis.educationalNotes[0]
     || analysis.overallRecommendation;
-  const practicalAdvice = analysis.overallRecommendation || "Pertahankan kebiasaan sehat dan pantau data secara rutin.";
+  const practicalAdvice =
+    analysis.overallRecommendation ||
+    "Pertahankan kebiasaan sehat, lalu pantau data secara rutin supaya perubahan kecil lebih mudah terlihat.";
   const dataSummary = hasAvailableData
-    ? `Data yang dipakai: ${availableData.slice(0, 4).join(", ")}${missingData.length > 0 ? `. Data yang belum ada: ${missingData.slice(0, 3).join(", ")}` : ""}.`
-    : `Data yang belum ada membuat penilaian masih terbatas: ${missingData.slice(0, 4).join(", ")}.`;
+    ? `Data utama yang saya pakai: ${availableData.slice(0, 4).join(", ")}${missingData.length > 0 ? `. Data yang belum ada: ${missingData.slice(0, 3).join(", ")}` : ""}.`
+    : `Data yang masih belum lengkap membuat penilaian masih terbatas: ${missingData.slice(0, 4).join(", ")}.`;
   const ringkasan = hasAvailableData
-    ? `Saya tangkap datanya, dan dari data terbaru yang tersedia status kesehatan Anda saat ini ${analysis.overallStatus.toLowerCase()}.`
-    : `Saya mengerti datanya masih belum lengkap, jadi saya belum bisa menilai kondisi Anda secara tajam.`;
+    ? `Saya tangkap datanya, dan dari data terbaru yang tersedia kondisi Anda saat ini ${analysis.overallStatus.toLowerCase()}.`
+    : `Saya mengerti datanya masih belum lengkap, jadi saya belum bisa menilai kondisi Anda dengan tajam.`;
   const data = dataSummary;
   const saranPoin = [
     toCompactSentence(practicalAdvice),
     keyNote ? toCompactSentence(keyNote) : "",
-    missingData.includes("tinggi dan berat badan") ? "Kalau sempat, lengkapi tinggi dan berat badan ya, supaya saya bisa membaca BMI Anda dengan lebih akurat." : "",
-    missingData.includes("tekanan darah") ? "Kalau ada, cek tekanan darah juga ya, supaya saya bisa menyesuaikan saran dengan kondisi Anda." : "",
-    missingData.includes("detak jantung") ? "Bila tersedia, tambahkan detak jantung supaya gambaran saya tentang kondisi Anda lebih lengkap." : "",
-    missingData.includes("aktivitas harian") ? "Catat langkah harian ya, supaya saya bisa memberi saran aktivitas yang lebih pas dan realistis." : "",
-    missingData.includes("hidrasi") ? "Tambahkan data minum kalau ada, supaya saran hidrasi saya tidak terlalu umum." : "",
-    missingData.includes("pola makan") ? "Isi ringkasan makan bila sempat, supaya edukasi nutrisi saya lebih relevan buat Anda." : "",
+    missingData.includes("tinggi dan berat badan") ? "Kalau sempat, lengkapi tinggi dan berat badan supaya BMI terbaca lebih akurat." : "",
+    missingData.includes("tekanan darah") ? "Kalau ada, cek tekanan darah juga supaya saran saya bisa lebih pas dengan kondisi Anda." : "",
+    missingData.includes("detak jantung") ? "Tambahkan detak jantung bila tersedia supaya gambaran kondisi Anda lebih lengkap." : "",
+    missingData.includes("aktivitas harian") ? "Catat langkah harian supaya saya bisa memberi saran aktivitas yang lebih realistis." : "",
+    missingData.includes("hidrasi") ? "Tambahkan data minum kalau ada, supaya saran hidrasi tidak terlalu umum." : "",
+    missingData.includes("pola makan") ? "Isi ringkasan makan bila sempat, supaya edukasi nutrisi lebih relevan buat Anda." : "",
   ].filter(Boolean);
   const saran = saranPoin.slice(0, 3).join(" ");
   const catatan = `Kalau Anda mau, saya bisa bantu baca per data satu per satu dengan pelan-pelan: BMI, tekanan darah, detak jantung, aktivitas, hidrasi, atau pola makan.`;
@@ -320,7 +332,7 @@ const buildTopicFallbackReply = (input: Omit<GenerateEducationReplyInput, "onUpd
       analysis.activityStatus === "Aktif" || analysis.activityStatus === "Cukup aktif"
         ? "Pertahankan ritme jalan kaki atau olahraga ringan seperti sekarang, lalu jaga konsistensi tiap hari."
         : analysis.activityStatus === "Kurang aktif"
-          ? "Coba tambah 10-15 menit jalan kaki atau pecah aktivitas menjadi beberapa sesi singkat."
+          ? "Coba tambah 10-15 menit jalan kaki atau pecah aktivitas menjadi beberapa sesi singkat agar lebih mudah dijalankan."
           : analysis.activityStatus === "Sangat kurang aktif"
             ? "Mulai dari target kecil dulu, misalnya berdiri dan berjalan singkat setiap jam."
             : "Lengkapi data aktivitas harian agar saya bisa memberi saran yang lebih tepat.";
@@ -381,7 +393,7 @@ const buildTopicFallbackReply = (input: Omit<GenerateEducationReplyInput, "onUpd
         : analysis.bloodPressureStatus === "Rendah"
           ? "Cukupi cairan, bangun perlahan, dan perhatikan bila sering pusing."
           : analysis.bloodPressureStatus === "Waspada" || analysis.bloodPressureStatus === "Tinggi"
-            ? "Kurangi garam berlebih, istirahat cukup, dan pantau ulang tekanan darah."
+            ? "Kurangi garam berlebih, istirahat cukup, dan pantau ulang tekanan darah setelah tubuh lebih tenang."
             : "Lengkapi data tekanan darah agar saya bisa memberi edukasi yang lebih tepat.";
 
     return [
@@ -402,7 +414,7 @@ const buildTopicFallbackReply = (input: Omit<GenerateEducationReplyInput, "onUpd
         : analysis.heartRateStatus === "Rendah"
           ? "Istirahat cukup dan perhatikan bila sering pusing atau lemas."
           : analysis.heartRateStatus === "Tinggi"
-            ? "Coba tenangkan diri, istirahat, dan pantau ulang bila tetap tinggi."
+            ? "Coba tenangkan diri, istirahat 5-10 menit, lalu pantau ulang bila tetap tinggi."
             : "Lengkapi data detak jantung agar saya bisa memberi saran yang lebih spesifik.";
 
     return [
@@ -435,7 +447,7 @@ const buildTopicFallbackReply = (input: Omit<GenerateEducationReplyInput, "onUpd
 
 const buildEducationPrompt = (input: Omit<GenerateEducationReplyInput, "onUpdate"> & { topic: TopicAnalysis }) => `
 Anda adalah asisten edukasi kesehatan untuk aplikasi pemantauan kesehatan.
-Jawaban harus singkat, hangat, sopan, dan berbasis data kesehatan terbaru pengguna.
+Jawaban harus singkat, hangat, sopan, aman, dan berbasis data kesehatan terbaru pengguna.
 Jangan memberi diagnosis pasti dan jangan menggantikan dokter.
 
 Fokus topik:
@@ -471,27 +483,28 @@ Snapshot data:
 - Data yang belum tersedia: ${buildMissingDataLines(input.context).join(", ") || "tidak ada"}
 - Riwayat percakapan terakhir: ${summarizeHistory(input.history) || "belum ada riwayat"}
 
+Gaya jawaban:
+- ${buildReplyStyleGuide(input.context.analysis).join("\n- ")}
+
 Aturan jawaban:
-- Gunakan bahasa Indonesia yang natural dan akrab.
-- Gunakan nada hangat, menenangkan, dan empatik seperti konselor kesehatan.
+- Gunakan bahasa Indonesia yang natural, akrab, dan menenangkan.
 - Buat bahasa terasa personal, seolah sedang bicara langsung dengan satu orang.
 - Saat cocok, pakai validasi singkat seperti "Saya tangkap" atau "Saya mengerti".
 - Jawab inti pertanyaan dulu, lalu beri saran praktis singkat.
-- Format wajib:
+- Wajib pakai format berikut dan jangan diubah:
   Ringkasan: ...
   Data: ...
   Saran: ...
   Catatan: ...
-- Maksimal 2 sampai 4 kalimat pendek per bagian.
-- Kalau data kurang, bilang jujur dan minta data yang dibutuhkan dengan lembut.
-- Kalau ada tanda bahaya, anjurkan ke tenaga medis segera.
-- Jangan menyalin teks konteks mentah.
-- Kalau jawaban mulai keluar dari konteks kesehatan, kembali ke edukasi kesehatan.
-- Setiap jawaban harus mengacu pada data yang dipakai, lalu jelaskan artinya dengan bahasa yang mudah dipahami.
-- Jangan menulis saran umum yang tidak menyebut data pendukungnya.
+- Setiap bagian cukup 1 sampai 2 kalimat pendek.
 - Minimal sebut 2 data kesehatan yang relevan jika datanya memang tersedia.
+- Jangan menulis saran umum yang tidak menyebut data pendukungnya.
+- Jangan menyalin teks konteks mentah.
+- Kalau data kurang, akui dengan jujur dan minta data yang dibutuhkan dengan lembut.
+- Kalau ada tanda bahaya, anjurkan segera periksa ke tenaga medis.
+- Kalau jawaban mulai keluar dari konteks kesehatan, kembali ke edukasi kesehatan.
 - Urutan penjelasan harus jelas: data yang dipakai, arti data itu, lalu saran yang bisa dilakukan hari ini.
-- Jika data masih sedikit, akui keterbatasannya dengan jujur dan arahkan user untuk melengkapi data yang penting.
+- Kalau kondisinya baik, tekankan kebiasaan yang perlu dipertahankan.
 
 Pertanyaan:
 ${input.question}

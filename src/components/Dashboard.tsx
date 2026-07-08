@@ -295,63 +295,6 @@ const isLegacyGreetingMessage = (message: VirtualEducationMessage) =>
 
 const filterEducationMessages = (messages: VirtualEducationMessage[]) => messages.filter((message) => !isLegacyGreetingMessage(message));
 
-type EducationAnswerSections = {
-  ringkasan: string;
-  data: string;
-  saran: string;
-  catatan: string;
-};
-
-const parseEducationAnswer = (text: string): EducationAnswerSections => {
-  const sections: EducationAnswerSections = {
-    ringkasan: "",
-    data: "",
-    saran: "",
-    catatan: "",
-  };
-
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  for (const line of lines) {
-    const match = line.match(/^(ringkasan|data|saran|catatan)\s*:\s*(.*)$/i);
-    if (match) {
-      const key = match[1].toLowerCase() as keyof EducationAnswerSections;
-      sections[key] = match[2].trim();
-      continue;
-    }
-
-    if (!sections.ringkasan) {
-      sections.ringkasan = line;
-      continue;
-    }
-
-    if (!sections.data) {
-      sections.data = line;
-      continue;
-    }
-
-    if (!sections.saran) {
-      sections.saran = line;
-      continue;
-    }
-
-    if (!sections.catatan) {
-      sections.catatan = line;
-    }
-  }
-
-  const fallback = text.trim();
-  return {
-    ringkasan: sections.ringkasan || fallback,
-    data: sections.data,
-    saran: sections.saran,
-    catatan: sections.catatan,
-  };
-};
-
 const FOOD_OPTIONS: FoodOption[] = [
   { key: "nasi_putih", name: "Nasi Putih 100 gr", group: "Karbohidrat", recommendedFor: ["Sarapan", "Makan Siang", "Makan Malam"], calories: 130, carbs: 28, protein: 2.7, fat: 0.3, fiber: 0.4, saturatedFat: 0.1, unsaturatedFat: 0.1 },
   { key: "roti_gandum", name: "Roti Gandum", group: "Karbohidrat", calories: 130, carbs: 24, protein: 6, fat: 2, fiber: 4, saturatedFat: 0, unsaturatedFat: 1 },
@@ -454,6 +397,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const [educationSpeaking, setEducationSpeaking] = useState(false);
   const educationSpeechRecognitionRef = useRef<SpeechRecognitionInstanceLike | null>(null);
   const educationSpeechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const educationChatEndRef = useRef<HTMLDivElement | null>(null);
   const [activityTrendMetric, setActivityTrendMetric] = useState<"Langkah" | "Jarak" | "Kalori">("Langkah");
   const [mealSummaryRange, setMealSummaryRange] = useState<"Hari Ini" | "7 Hari">("Hari Ini");
   const [isActivityRunning, setIsActivityRunning] = useState(false);
@@ -1147,17 +1091,13 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       entry.note || entry.source,
       entry.actionLabel || "Lihat",
     ]);
-  const latestEducationAssistantMessage =
-    [...educationChatMessages].reverse().find((message) => message.role === "assistant")?.text ||
-    "Asisten edukasi akan menjawab berdasarkan data kesehatan terbaru Anda.";
-  const latestEducationUserMessage =
-    [...educationChatMessages].reverse().find((message) => message.role === "user")?.text || "";
-  const latestEducationMessages = educationChatMessages.slice(-4);
   const educationMealSummary = hasMealData
     ? `${mealCaloriesDisplay.toLocaleString("id-ID")} kkal, ${carbsDisplay.toLocaleString("id-ID")} g karbohidrat, ${proteinDisplay.toLocaleString("id-ID")} g protein, ${fatDisplay.toLocaleString("id-ID")} g lemak, ${fiberDisplay.toLocaleString("id-ID")} g serat`
     : "";
   const educationActivitySummary = totalActivitySteps > 0 ? `${totalActivitySteps.toLocaleString("id-ID")} langkah hari ini` : "";
   const educationHydrationSummary = waterGlasses > 0 ? `${waterGlasses} gelas air` : "";
+  const latestEducationUserMessage =
+    [...educationChatMessages].reverse().find((message) => message.role === "user")?.text || "";
   const educationContext = buildEducationContext({
     patientName: name,
     age: profile.age || calculateAgeFromBirthDate(profile.birthDate) || "",
@@ -1200,58 +1140,6 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       question: "Saya merasa lelah, apa edukasi yang cocok?",
     },
   ];
-  const educationArticleCards = [
-    {
-      tag: "Hidrasi",
-      title: "Pentingnya Minum Air yang Cukup",
-      description:
-        waterGlasses > 0
-          ? `${waterGlasses} gelas air sudah tercatat hari ini. Tetap jaga ritme minum agar tubuh tetap segar dan fokus.`
-          : "Cukup minum air membantu tubuh bekerja optimal dan menjaga konsentrasi sepanjang hari.",
-      footer: "3 menit baca",
-      icon: "fa-glass-water",
-      visualClass:
-        "bg-[linear-gradient(180deg,rgba(248,250,252,1)_0%,rgba(236,253,245,1)_52%,rgba(247,250,252,1)_100%)]",
-      badgeClass: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
-      ctaLabel: "Bahas hidrasi",
-      ctaQuestion: "Bagaimana cara menjaga hidrasi saya hari ini?",
-    },
-    {
-      tag: "Nutrisi",
-      title: "Isi Piringmu, Lengkapi Gizi Harian",
-      description:
-        mealCaloriesDisplay > 0
-          ? `${mealCaloriesDisplay.toLocaleString("id-ID")} kkal sudah tercatat hari ini. Kombinasikan karbohidrat, protein, dan serat agar energi tetap seimbang.`
-          : "Kombinasi karbohidrat, protein, lemak sehat, dan serat membantu energi tetap seimbang.",
-      footer: "3 menit baca",
-      icon: "fa-bowl-food",
-      visualClass:
-        "bg-[linear-gradient(180deg,rgba(248,250,252,1)_0%,rgba(236,253,245,1)_52%,rgba(247,250,252,1)_100%)]",
-      badgeClass: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
-      ctaLabel: "Bahas nutrisi",
-      ctaQuestion: "Bagaimana pola makan saya hari ini?",
-    },
-    {
-      tag: "Aktivitas",
-      title: "Aktivitas Fisik Ringan, Manfaat Besar",
-      description:
-        totalActivitySteps > 0
-          ? `${totalActivitySteps.toLocaleString("id-ID")} langkah terekam hari ini. Jalan kaki singkat tetap punya dampak besar untuk kebugaran.`
-          : "Jalan kaki 30 menit setiap hari dapat membantu menjaga kebugaran dan suasana hati.",
-      footer: "2 menit baca",
-      icon: "fa-person-walking",
-      visualClass:
-        "bg-[linear-gradient(180deg,rgba(248,250,252,1)_0%,rgba(236,253,245,1)_52%,rgba(247,250,252,1)_100%)]",
-      badgeClass: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
-      ctaLabel: "Bahas aktivitas",
-      ctaQuestion: "Bagaimana aktivitas fisik saya hari ini?",
-    },
-  ];
-  const educationConversationStarter =
-    latestEducationAssistantMessage ||
-    "Belum ada jawaban edukasi. Gunakan pertanyaan cepat di bawah untuk mulai percakapan.";
-  const canReadEducationAnswer = !latestEducationAssistantMessage.startsWith("Asisten edukasi akan menjawab berdasarkan data kesehatan terbaru Anda.");
-  const educationAnswerSections = parseEducationAnswer(educationConversationStarter);
   const topicLabelForUi = liveEducationTopic.label;
   const mergedHistoryRows = [...activityHistoryRowsForExport];
   const mergedHistoryKeys = new Set(historyEventRows.map((row) => `${row[0]}|${row[1]}|${row[2]}|${row[5]}`));
@@ -2270,6 +2158,11 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     if (educationChatMessages.length > 0) return;
   // Biarkan state tetap kosong tanpa setState agar tidak memicu loop rerender.
   }, [educationChatMessages.length, userUid]);
+
+  useEffect(() => {
+    if (activeMenu !== "Edukasi") return;
+    educationChatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [activeMenu, educationChatMessages.length]);
 
   const parseBloodPressure = (value: string) => {
     const [sysRaw, diaRaw] = String(value || "0/0").split("/");
@@ -4796,269 +4689,145 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
               ) : null}
 
               {activeMenu === "Edukasi" ? (
-                <>
-                  <section className="mt-4 space-y-4">
-                      <div className="grid gap-4 lg:grid-cols-3">
-                        {educationArticleCards.map((card) => (
-                          <article
-                            key={card.title}
-                            className="group flex h-full flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_10px_28px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.06)]"
-                          >
-                            <div className={`relative h-40 overflow-hidden ${card.visualClass}`}>
-                              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.24),transparent_40%)]" />
-                              <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-white/40 to-transparent" />
-                              <div className={`absolute left-4 top-4 inline-flex items-center gap-2 rounded-full bg-white/92 px-3 py-1 text-[11px] font-bold shadow-sm`}>
-                                <span className={`inline-flex items-center rounded-full px-2 py-1 ${card.badgeClass}`}>{card.tag}</span>
-                              </div>
-                              <div className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-2xl border border-white/70 bg-white/92 text-slate-600 shadow-sm">
-                                <i className={`fa-solid ${card.icon} text-[18px]`} />
-                              </div>
-                              <div className="absolute bottom-4 left-4 right-4">
-                                <div className="h-1.5 w-16 rounded-full bg-white/60" />
-                              </div>
-                            </div>
-                            <div className="flex flex-1 flex-col p-5">
-                              <div className="min-h-[100px]">
-                                <h5 className="text-lg font-black leading-tight text-slate-950">{card.title}</h5>
-                                <p className="mt-2 text-sm leading-6 text-slate-600">{card.description}</p>
-                              </div>
-                              <div className="mt-5 flex items-center justify-between text-xs text-slate-500">
-                                <span className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1.5 font-semibold text-slate-600">
-                                  <i className="fa-regular fa-clock" />
-                                  {card.footer}
-                                </span>
-                                <span className="inline-flex items-center gap-2 text-slate-400">
-                                  <i className="fa-solid fa-arrow-up-right-from-square text-[10px]" />
-                                </span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => startEducationConversation(card.ctaQuestion)}
-                                className="mt-4 inline-flex items-center justify-between gap-3 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800"
-                              >
-                                <span className="inline-flex items-center gap-2">
-                                  <i className="fa-solid fa-comments" />
-                                  {card.ctaLabel}
-                                </span>
-                                <i className="fa-solid fa-arrow-right text-xs" />
-                              </button>
-                            </div>
-                        </article>
-                      ))}
-                    </div>
-
-                    <section>
-                      <div className="mb-4 flex items-center justify-between gap-3">
-                        <h4 className="text-xl font-black text-slate-950">Aksi Cepat</h4>
-                      </div>
-                      <div className="grid gap-3 lg:grid-cols-3">
-                        {educationQuickQuestions.map((item, index) => {
-                          const icon = index === 0 ? "fa-ruler-combined" : index === 1 ? "fa-droplet" : "fa-circle-question";
-                          const containerClass =
-                            index === 0
-                              ? "border-slate-200 bg-slate-50 hover:bg-emerald-50"
-                              : index === 1
-                                ? "border-slate-200 bg-slate-50 hover:bg-emerald-50"
-                                : "border-slate-200 bg-slate-50 hover:bg-emerald-50";
-                          const iconClass =
-                            index === 0
-                              ? "bg-emerald-50 text-emerald-700"
-                              : index === 1
-                                ? "bg-emerald-50 text-emerald-700"
-                                : "bg-emerald-50 text-emerald-700";
-                          return (
-                            <button
-                              key={item.label}
-                              type="button"
-                              onClick={() => startEducationConversation(item.question)}
-                              className={`flex min-h-[150px] flex-col gap-4 rounded-[24px] border px-5 py-4 text-left shadow-[0_8px_20px_rgba(15,23,42,0.03)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(15,23,42,0.05)] ${containerClass}`}
-                            >
-                              <span className="flex items-start justify-between gap-3">
-                                <span className={`grid h-12 w-12 place-items-center rounded-[18px] ${iconClass}`}>
-                                  <i className={`fa-solid ${icon} text-xl`} />
-                                </span>
-                                <i className="fa-solid fa-chevron-right text-slate-500" />
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{item.label}</span>
-                                <span className="mt-1 block text-sm font-semibold leading-6 text-slate-800">{item.question}</span>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
-
-                    <section className="space-y-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Tanya tentang Kesehatan</p>
-                          <h4 className="mt-1 text-lg font-black text-slate-950">Panduan penggunaan</h4>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => startEducationConversation("Bagaimana cara menggunakan edukasi kesehatan ini?")}
-                          className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
-                        >
-                          Panduan Penggunaan
-                          <i className="fa-regular fa-circle-question" />
-                        </button>
-                      </div>
-
-                      <article className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
-                        <div className="absolute right-6 top-5 hidden h-28 w-28 rounded-full bg-emerald-50 blur-2xl sm:block" />
-                        <div className="relative grid gap-5">
-                          <div className="flex items-start gap-4">
-                            <div className="grid h-16 w-16 place-items-center rounded-full bg-emerald-700 text-white shadow-[0_14px_28px_rgba(16,185,129,0.18)]">
-                              <i className="fa-solid fa-leaf text-2xl" />
-                            </div>
-                            <p className="max-w-2xl text-sm leading-6 text-slate-700">
-                              Tulis pertanyaan singkat tentang hidrasi, nutrisi, aktivitas, atau BMI untuk mendapatkan jawaban edukasi yang langsung terlihat di halaman ini.
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-                          <input
-                            value={educationChatInput}
-                            onChange={(event) => setEducationChatInput(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                void sendEducationChatMessage();
-                              }
-                            }}
-                            className="h-14 flex-1 rounded-full border border-slate-200 bg-white px-5 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                            maxLength={240}
-                            placeholder="Ketik pertanyaan Anda di sini..."
-                          />
-                          <div className="flex items-center gap-3">
-                            <button
-                              type="button"
-                              onClick={() => startEducationVoiceInput()}
-                              className={`grid h-14 w-14 place-items-center rounded-full border text-white shadow-[0_14px_28px_rgba(15,23,42,0.18)] transition ${
-                                educationListening
-                                  ? "border-rose-300 bg-rose-600 hover:bg-rose-500"
-                                  : "border-emerald-200 bg-emerald-700 hover:bg-emerald-800"
-                              }`}
-                              aria-label={educationListening ? "Hentikan rekaman suara" : "Bicara dengan suara"}
-                              disabled={!educationSpeechInputSupported}
-                              title={educationSpeechInputSupported ? "Gunakan mikrofon untuk mengisi pertanyaan" : "Browser belum mendukung input suara"}
-                            >
-                              <i className={`fa-solid ${educationListening ? "fa-stop" : "fa-microphone"} text-lg`} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => speakEducationAnswer(latestEducationAssistantMessage)}
-                              className={`grid h-14 w-14 place-items-center rounded-full border shadow-[0_14px_28px_rgba(15,23,42,0.12)] transition ${
-                                educationSpeaking
-                                  ? "border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-50"
-                                  : "border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
-                              }`}
-                              aria-label="Bacakan jawaban"
-                              disabled={!educationSpeechOutputSupported || !canReadEducationAnswer}
-                              title={canReadEducationAnswer ? "Bacakan jawaban edukasi terakhir" : "Belum ada jawaban yang bisa dibacakan"}
-                            >
-                              <i className={`fa-solid ${educationSpeaking ? "fa-volume-high" : "fa-volume-high"} text-lg`} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void sendEducationChatMessage()}
-                              className="grid h-14 w-14 place-items-center rounded-full bg-emerald-700 text-white shadow-[0_14px_28px_rgba(16,185,129,0.18)] transition hover:bg-emerald-800"
-                              aria-label="Kirim pertanyaan"
-                            >
-                              <i className="fa-solid fa-paper-plane text-lg" />
-                            </button>
-                          </div>
-                        </div>
-                        <p className="mt-3 text-xs font-medium text-slate-500">
-                          {educationSpeechInputSupported || educationSpeechOutputSupported
-                            ? "Tekan mikrofon untuk bicara, lalu kirim. Tekan ikon suara untuk mendengarkan jawaban."
-                            : "Browser ini belum mendukung fitur suara, jadi kamu tetap bisa pakai teks."}
-                        </p>
-
-                        <div className="mt-5 rounded-[22px] border border-emerald-100 bg-emerald-50/60 p-4">
-                          <div className="flex items-start gap-3">
-                            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white text-emerald-700 ring-1 ring-emerald-100">
-                              <i className="fa-solid fa-shield-heart text-xl" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-black text-slate-950">Untuk edukasi, bukan diagnosis</p>
-                              <p className="mt-1 text-sm leading-6 text-slate-600">
-                                Informasi yang diberikan bersifat edukatif dan tidak menggantikan saran medis profesional.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </article>
-                    </section>
-
-                    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Percakapan Terbaru</p>
-                          <h4 className="mt-2 text-lg font-black text-slate-950">Jawaban edukasi yang sudah tersimpan</h4>
-                        </div>
-                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700">
-                          {latestEducationMessages.length} pesan terakhir
-                        </span>
-                      </div>
-
-                      <div className="mt-4 space-y-3">
-                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
-                          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Pertanyaan Terakhir</p>
-                          <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">
-                            {latestEducationUserMessage || "Belum ada pertanyaan terbaru. Gunakan aksi cepat atau mulai mengetik di bawah."}
+                <section className="mt-4">
+                  <article className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
+                    <div className="border-b border-slate-100 bg-[linear-gradient(180deg,#f8fbf9_0%,#ffffff_100%)] px-5 py-5 md:px-6">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="max-w-3xl">
+                          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-emerald-700">Chat Edukasi</p>
+                          <h4 className="mt-2 text-2xl font-black text-slate-950 md:text-[30px]">Tanya saja, saya jawab seperti bot kesehatan</h4>
+                          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                            Semua percakapan sekarang difokuskan ke chat. Tidak ada lagi card edukasi lama, jadi alurnya lebih bersih dan terasa seperti ngobrol dengan asisten.
                           </p>
                         </div>
-                        <div className="rounded-2xl border border-emerald-100 bg-white px-4 py-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2">
-                              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">Jawaban Edukasi</p>
-                              <button
-                                type="button"
-                                onClick={() => speakEducationAnswer(educationConversationStarter)}
-                                className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                disabled={!educationSpeechOutputSupported || !canReadEducationAnswer}
-                              >
-                                Dengarkan
-                              </button>
-                            </div>
-                            <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700">
-                              {educationContext.analysis.overallStatus}
+                        <div className="flex flex-wrap gap-2">
+                          {educationParameterChips.map((chip) => (
+                            <span key={chip} className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[11px] font-bold text-emerald-700">
+                              {chip}
                             </span>
-                          </div>
-                          <div className="mt-3 grid gap-3">
-                            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
-                              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Ringkasan</p>
-                              <p className="mt-2 text-sm leading-6 text-slate-700">
-                                {educationAnswerSections.ringkasan || "Belum ada jawaban edukasi. Gunakan pertanyaan cepat di bawah untuk mulai percakapan."}
-                              </p>
-                            </div>
-                            <div className="rounded-2xl border border-emerald-100 bg-white px-4 py-3">
-                              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Data</p>
-                              <p className="mt-2 text-sm leading-6 text-slate-700">
-                                {educationAnswerSections.data || "Data yang dipakai akan ditampilkan di sini agar jawaban mudah diverifikasi."}
-                              </p>
-                            </div>
-                            <div className="rounded-2xl border border-emerald-100 bg-white px-4 py-3">
-                              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Saran</p>
-                              <p className="mt-2 text-sm leading-6 text-slate-700">
-                                {educationAnswerSections.saran || "Saran akan muncul setelah AI menjawab pertanyaan kesehatan Anda."}
-                              </p>
-                            </div>
-                            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
-                              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Catatan</p>
-                              <p className="mt-2 text-sm leading-6 text-slate-700">
-                                {educationAnswerSections.catatan || "Catatan tambahan akan muncul jika AI perlu memberi arahan lanjutan."}
-                              </p>
-                            </div>
-                          </div>
+                          ))}
                         </div>
                       </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {educationQuickQuestions.map((item) => (
+                          <button
+                            key={item.label}
+                            type="button"
+                            onClick={() => startEducationConversation(item.question)}
+                            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800"
+                          >
+                            <i className="fa-solid fa-bolt text-emerald-600" />
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </section>
-                </>
+
+                    <div className="bg-[linear-gradient(180deg,#f7faf8_0%,#ffffff_100%)] px-4 py-5 md:px-6">
+                      <div className="flex max-h-[68vh] min-h-[560px] flex-col gap-4 overflow-y-auto pr-1">
+                        {educationChatMessages.length === 0 ? (
+                          <div className="flex">
+                            <div className="max-w-[92%] rounded-[28px] rounded-bl-md border border-emerald-100 bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.04)] md:max-w-[78%]">
+                              <p className="font-black text-slate-950">Saya siap bantu.</p>
+                              <p className="mt-1">
+                                Coba tanya tentang BMI, tekanan darah, detak jantung, aktivitas, hidrasi, atau pola makan.
+                              </p>
+                              <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                                Topik aktif: {topicLabelForUi}
+                              </p>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {educationChatMessages.map((message) => {
+                          const isUser = message.role === "user";
+                          return (
+                            <div key={message.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                              <div
+                                className={`max-w-[92%] rounded-[28px] px-4 py-3 text-sm leading-6 shadow-[0_12px_28px_rgba(15,23,42,0.04)] md:max-w-[78%] ${
+                                  isUser
+                                    ? "rounded-br-md bg-emerald-700 text-white"
+                                    : "rounded-bl-md border border-emerald-100 bg-white text-slate-700"
+                                }`}
+                              >
+                                <div className={`mb-2 flex items-center justify-between gap-3 text-[11px] font-black uppercase tracking-[0.18em] ${isUser ? "text-emerald-100" : "text-emerald-700"}`}>
+                                  <span>{isUser ? "Anda" : "Asisten Kesehatan"}</span>
+                                  <span className={isUser ? "text-emerald-100/80" : "text-slate-400"}>
+                                    {formatLocalTime(message.createdAt)}
+                                  </span>
+                                </div>
+                                <p className="whitespace-pre-wrap break-words">{message.text}</p>
+                                {!isUser ? (
+                                  <div className="mt-3 flex items-center justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => speakEducationAnswer(message.text)}
+                                      className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-100"
+                                      disabled={!educationSpeechOutputSupported}
+                                    >
+                                      <i className="fa-solid fa-volume-high" />
+                                      Dengarkan
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div ref={educationChatEndRef} />
+                      </div>
+                    </div>
+
+                    <div className="border-t border-slate-100 bg-white px-4 py-4 md:px-6">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                        <textarea
+                          value={educationChatInput}
+                          onChange={(event) => setEducationChatInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              void sendEducationChatMessage();
+                            }
+                          }}
+                          className="min-h-[72px] flex-1 resize-none rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                          maxLength={240}
+                          placeholder="Tulis pertanyaan kesehatan Anda di sini..."
+                        />
+                        <div className="flex items-center gap-2 self-end md:self-auto">
+                          <button
+                            type="button"
+                            onClick={() => startEducationVoiceInput()}
+                            className={`grid h-12 w-12 place-items-center rounded-full border text-white shadow-[0_14px_28px_rgba(15,23,42,0.14)] transition ${
+                              educationListening
+                                ? "border-rose-300 bg-rose-600 hover:bg-rose-500"
+                                : "border-emerald-200 bg-emerald-700 hover:bg-emerald-800"
+                            }`}
+                            aria-label={educationListening ? "Hentikan rekaman suara" : "Bicara dengan suara"}
+                            disabled={!educationSpeechInputSupported}
+                            title={educationSpeechInputSupported ? "Gunakan mikrofon untuk mengisi pertanyaan" : "Browser belum mendukung input suara"}
+                          >
+                            <i className={`fa-solid ${educationListening ? "fa-stop" : "fa-microphone"} text-base`} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void sendEducationChatMessage()}
+                            className="grid h-12 w-12 place-items-center rounded-full bg-emerald-700 text-white shadow-[0_14px_28px_rgba(16,185,129,0.18)] transition hover:bg-emerald-800"
+                            aria-label="Kirim pertanyaan"
+                          >
+                            <i className="fa-solid fa-paper-plane text-base" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+                        <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
+                          <i className="fa-solid fa-shield-heart" />
+                          Edukasi, bukan diagnosis
+                        </span>
+                        <span>Tekan Enter untuk kirim, Shift+Enter untuk baris baru.</span>
+                      </div>
+                    </div>
+                  </article>
+                </section>
               ) : null}
 
               {activeMenu === "Riwayat" ? (
