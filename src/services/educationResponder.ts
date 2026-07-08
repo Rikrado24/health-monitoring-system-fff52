@@ -310,6 +310,15 @@ const collectDataLines = (context: EducationContext) => {
     isMeaningfulValue(context.educationContext.recentHydrationSummary)
       ? `Riwayat hidrasi ${context.educationContext.recentHydrationSummary}`
       : "",
+    isMeaningfulValue(context.educationContext.recentMealComparisonSummary)
+      ? `Perbandingan pola makan ${context.educationContext.recentMealComparisonSummary}`
+      : "",
+    isMeaningfulValue(context.educationContext.recentHydrationComparisonSummary)
+      ? `Perbandingan hidrasi ${context.educationContext.recentHydrationComparisonSummary}`
+      : "",
+    isMeaningfulValue(context.educationContext.recentActivityComparisonSummary)
+      ? `Perbandingan aktivitas ${context.educationContext.recentActivityComparisonSummary}`
+      : "",
     isMeaningfulValue(context.educationContext.recentWeightBmiSummary)
       ? `Perbandingan berat/BMI ${context.educationContext.recentWeightBmiSummary}`
       : "",
@@ -318,6 +327,9 @@ const collectDataLines = (context: EducationContext) => {
       : "",
     isMeaningfulValue(context.educationContext.recentHeartRateSummary)
       ? `Perbandingan detak jantung ${context.educationContext.recentHeartRateSummary}`
+      : "",
+    isMeaningfulValue(context.educationContext.recentMostChangedSummary)
+      ? `Perubahan paling menonjol ${context.educationContext.recentMostChangedSummary}`
       : "",
     isMeaningfulValue(context.educationContext.mealSummary) ? `Pola makan ${context.educationContext.mealSummary}` : "",
     isMeaningfulValue(context.educationContext.sleepSummary)
@@ -339,9 +351,13 @@ const collectMissingData = (context: EducationContext) => {
     !isMeaningfulValue(context.educationContext.recentBloodPressureSummary) ? "riwayat tekanan darah" : "",
     !isMeaningfulValue(context.educationContext.recentStepSummary) ? "riwayat langkah" : "",
     !isMeaningfulValue(context.educationContext.recentHydrationSummary) ? "riwayat hidrasi" : "",
+    !isMeaningfulValue(context.educationContext.recentMealComparisonSummary) ? "perbandingan pola makan" : "",
+    !isMeaningfulValue(context.educationContext.recentHydrationComparisonSummary) ? "perbandingan hidrasi" : "",
+    !isMeaningfulValue(context.educationContext.recentActivityComparisonSummary) ? "perbandingan aktivitas" : "",
     !isMeaningfulValue(context.educationContext.recentWeightBmiSummary) ? "perbandingan berat dan BMI" : "",
     !isMeaningfulValue(context.educationContext.recentSleepComparisonSummary) ? "perbandingan tidur" : "",
     !isMeaningfulValue(context.educationContext.recentHeartRateSummary) ? "perbandingan detak jantung" : "",
+    !isMeaningfulValue(context.educationContext.recentMostChangedSummary) ? "perubahan paling menonjol" : "",
     !isMeaningfulValue(context.educationContext.mealSummary) ? "pola makan" : "",
     !isMeaningfulValue(context.educationContext.sleepSummary) ? "pola tidur" : "",
     !isMeaningfulValue(context.educationContext.sleepHistorySummary) ? "riwayat tidur" : "",
@@ -351,6 +367,10 @@ const collectMissingData = (context: EducationContext) => {
 const collectHistoryHighlights = (context: EducationContext) =>
   [
     context.educationContext.recentTrendSummary,
+    context.educationContext.recentMostChangedSummary,
+    context.educationContext.recentMealComparisonSummary,
+    context.educationContext.recentHydrationComparisonSummary,
+    context.educationContext.recentActivityComparisonSummary,
     context.educationContext.recentWeightBmiSummary,
     context.educationContext.recentSleepComparisonSummary,
     context.educationContext.recentHeartRateSummary,
@@ -427,10 +447,29 @@ const buildContextualFallbackReply = (input: Omit<GenerateEducationReplyInput, "
   const dataSummary = dataLines.length > 0 ? dataLines.slice(0, 4).join(", ") : "Data kesehatan belum cukup lengkap";
   const historySummary = historyHighlights.length > 0 ? historyHighlights.slice(0, 3).join(" | ") : "Belum ada riwayat tambahan";
   const mentionsToday = /hari ini|today|sekarang/i.test(input.question);
+  const asksMostChangedToday = /apa yang paling berubah hari ini|apa yang berubah paling|perubahan paling besar hari ini|yang paling berubah hari ini/i.test(
+    input.question.toLowerCase()
+  );
+  const strongestChangeSummary =
+    input.context.educationContext.recentMostChangedSummary ||
+    [
+      input.context.educationContext.recentActivityComparisonSummary,
+      input.context.educationContext.recentMealComparisonSummary,
+      input.context.educationContext.recentHydrationComparisonSummary,
+      input.context.educationContext.recentWeightBmiSummary,
+      input.context.educationContext.recentSleepComparisonSummary,
+      input.context.educationContext.recentHeartRateSummary,
+      input.context.educationContext.recentBloodPressureSummary,
+    ]
+      .map((value) => value?.trim())
+      .find((value) => Boolean(value)) ||
+    "";
   const opening =
     topic.topic === "umum"
       ? mentionsToday
-        ? `Berdasarkan data hari ini dan perbandingan dengan riwayat terakhir, kondisi Anda ${analysis.overallStatus.toLowerCase()}.`
+        ? asksMostChangedToday
+          ? `Perubahan paling menonjol hari ini adalah ${compactText(strongestChangeSummary || "belum ada perubahan yang cukup jelas untuk disimpulkan")}.`
+          : `Berdasarkan data hari ini dan perbandingan dengan riwayat terakhir, kondisi Anda ${analysis.overallStatus.toLowerCase()}.`
         : `Berdasarkan data terbaru dan riwayat yang masuk, kondisi Anda ${analysis.overallStatus.toLowerCase()}.`
       : `Saya tangkap, ini terkait ${topic.label.toLowerCase()} dan saya lihat dari riwayat datanya kondisi Anda ${analysis.overallStatus.toLowerCase()}.`;
   const guidance = compactText(buildGuidanceByTopic(topic, input.context));
@@ -439,9 +478,13 @@ const buildContextualFallbackReply = (input: Omit<GenerateEducationReplyInput, "
   const trendNote = input.context.educationContext.recentTrendSummary
     ? `Tren singkat: ${compactText(input.context.educationContext.recentTrendSummary)}.`
     : "";
+  const mostChangedNote =
+    asksMostChangedToday && strongestChangeSummary
+      ? `Perubahan utama yang terlihat: ${compactText(strongestChangeSummary)}.`
+      : "";
 
   return [
-    `Ringkasan: ${opening} ${trendNote || ""}`.trim(),
+    `Ringkasan: ${opening} ${trendNote || ""} ${mostChangedNote || ""}`.trim(),
     `Data: ${dataSummary}. Riwayat terbaru: ${historySummary}. ${missingNote}`.trim(),
     `Saran: ${guidance}${extras ? ` ${extras}` : ""}`.trim(),
     `Catatan: ${analysis.overallStatus !== "Baik" ? "Kalau ada nyeri dada, sesak, pusing berat, lemas sekali, atau pingsan, segera periksa ke tenaga medis." : "Kalau kondisinya stabil, pertahankan kebiasaan baik dan pantau rutin."}`,
@@ -467,6 +510,7 @@ Konteks kesehatan:
 - Nama: ${input.context.educationContext.patientName}
 - Usia: ${input.context.educationContext.age}
 - Jenis kelamin: ${input.context.educationContext.gender}
+- Gunakan jenis kelamin hanya sebagai konteks tambahan bila relevan, misalnya saat menjelaskan BMI atau komposisi tubuh, dan jangan diulang berlebihan.
 - Tinggi badan: ${input.context.educationContext.height}
 - Berat badan: ${input.context.educationContext.weight}
 - Lokasi: ${input.context.educationContext.location}
@@ -480,6 +524,9 @@ Konteks kesehatan:
 - Riwayat tekanan darah: ${input.context.educationContext.recentBloodPressureSummary || "-"}
 - Riwayat langkah: ${input.context.educationContext.recentStepSummary || "-"}
 - Riwayat hidrasi: ${input.context.educationContext.recentHydrationSummary || "-"}
+- Perbandingan pola makan: ${input.context.educationContext.recentMealComparisonSummary || "-"}
+- Perbandingan hidrasi: ${input.context.educationContext.recentHydrationComparisonSummary || "-"}
+- Perbandingan aktivitas: ${input.context.educationContext.recentActivityComparisonSummary || "-"}
 - Pola tidur: ${input.context.educationContext.sleepSummary || "-"}
 - Durasi tidur: ${input.context.educationContext.sleepHours || "-"}
 - Status tidur: ${input.context.educationContext.sleepStatus || "-"}
@@ -487,6 +534,7 @@ Konteks kesehatan:
 - Perbandingan berat/BMI: ${input.context.educationContext.recentWeightBmiSummary || "-"}
 - Perbandingan tidur: ${input.context.educationContext.recentSleepComparisonSummary || "-"}
 - Perbandingan detak jantung: ${input.context.educationContext.recentHeartRateSummary || "-"}
+- Perubahan paling menonjol: ${input.context.educationContext.recentMostChangedSummary || "-"}
 - Tekanan darah: ${input.context.educationContext.bloodPressure}
 - Status tekanan darah: ${input.context.educationContext.bloodPressureStatus}
 - Detak jantung: ${input.context.educationContext.heartRate}
@@ -505,9 +553,13 @@ Analisis cepat:
 - Ringkasan tekanan darah riwayat: ${input.context.educationContext.recentBloodPressureSummary || "-"}
 - Ringkasan langkah riwayat: ${input.context.educationContext.recentStepSummary || "-"}
 - Ringkasan hidrasi riwayat: ${input.context.educationContext.recentHydrationSummary || "-"}
+- Ringkasan pola makan harian: ${input.context.educationContext.recentMealComparisonSummary || "-"}
+- Ringkasan hidrasi harian: ${input.context.educationContext.recentHydrationComparisonSummary || "-"}
+- Ringkasan aktivitas harian: ${input.context.educationContext.recentActivityComparisonSummary || "-"}
 - Ringkasan berat/BMI riwayat: ${input.context.educationContext.recentWeightBmiSummary || "-"}
 - Ringkasan tidur riwayat: ${input.context.educationContext.recentSleepComparisonSummary || "-"}
 - Ringkasan detak jantung riwayat: ${input.context.educationContext.recentHeartRateSummary || "-"}
+- Ringkasan perubahan paling menonjol: ${input.context.educationContext.recentMostChangedSummary || "-"}
 
 Snapshot data:
 - Data yang tersedia: ${collectDataLines(input.context).join(" | ") || "belum ada data yang bisa dipakai"}
@@ -522,6 +574,7 @@ Gaya jawaban:
 - Mulai dari parameter yang paling berisiko atau paling berubah.
 - Kalau ada perubahan dari riwayat, sebutkan perubahan itu secara eksplisit.
 - Selalu tutup dengan langkah sederhana yang bisa dilakukan hari ini.
+- Kalau user bertanya "apa yang paling berubah hari ini", mulai dari ringkasan perubahan paling menonjol lalu tambahkan 1-2 perubahan pendukung yang paling relevan.
 - Jika ada rujukan web, tampilkan hanya sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.
 - Jika ada tanda bahaya, anjurkan segera periksa ke tenaga medis.
 
@@ -538,6 +591,7 @@ Aturan jawaban:
 - Jangan menyalin teks konteks mentah.
 - Kalau jawaban mulai keluar dari konteks kesehatan, kembali ke edukasi kesehatan.
 - Urutan penjelasan harus jelas: data yang dipakai, arti data itu, lalu saran yang bisa dilakukan hari ini.
+- Kalau user bertanya "apa yang paling berubah hari ini", mulai dari perubahan paling menonjol lalu jelaskan 1-2 perubahan pendukung yang paling relevan.
 - Kalau kondisinya baik, tekankan kebiasaan yang perlu dipertahankan.
 
 Pertanyaan:

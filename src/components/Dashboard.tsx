@@ -681,10 +681,49 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     const match = String(value || "").match(/(\d+(?:[.,]\d+)?)/);
     return match ? Number(match[1].replace(",", ".")) || 0 : 0;
   };
+  const getLocalDateKey = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return parsed.toLocaleDateString("sv-SE");
+  };
+  const currentDayKey = new Date().toLocaleDateString("sv-SE");
+  const previousDayDate = new Date();
+  previousDayDate.setDate(previousDayDate.getDate() - 1);
+  const previousDayKey = previousDayDate.toLocaleDateString("sv-SE");
+  const getDateLabelFromKey = (dateKey: string) => {
+    if (!dateKey) return "-";
+    if (dateKey === currentDayKey) return "hari ini";
+    if (dateKey === previousDayKey) return "kemarin";
+    const [year, month, day] = dateKey.split("-").map(Number);
+    if (![year, month, day].every((value) => Number.isFinite(value) && value > 0)) return dateKey;
+    return formatLocalDate(new Date(year, month - 1, day));
+  };
+  const summarizeDelta = (current: number, previous: number, unit: string) => {
+    if (!Number.isFinite(current) || !Number.isFinite(previous) || previous <= 0 || current === previous) return "";
+    return `${current > previous ? "naik" : "turun"} ${Math.abs(current - previous).toLocaleString("id-ID")} ${unit}`;
+  };
   const historyMealCaloriesTotal = mealHistoryEventDocs.reduce((total, entry) => total + parseHistoryCalories(entry.value), 0);
   const historyMealSummary = historyMealCaloriesTotal > 0 ? `${historyMealCaloriesTotal.toLocaleString("id-ID")} kkal dari ${mealHistoryEventDocs.length} catatan riwayat` : "";
   const historyHydrationTotal = hydrationHistoryEventDocs.reduce((total, entry) => total + parseHistoryCalories(entry.value), 0);
   const historyHydrationSummary = historyHydrationTotal > 0 ? `${historyHydrationTotal.toLocaleString("id-ID")} gelas air dari riwayat` : "";
+  const mealDailyTotals = mealHistoryEventDocs.reduce((acc, entry) => {
+    const dateKey = getLocalDateKey(entry.occurredAt);
+    if (!dateKey) return acc;
+    const current = acc.get(dateKey) || { calories: 0, count: 0 };
+    current.calories += parseHistoryCalories(entry.value);
+    current.count += 1;
+    acc.set(dateKey, current);
+    return acc;
+  }, new Map<string, { calories: number; count: number }>());
+  const hydrationDailyTotals = hydrationHistoryEventDocs.reduce((acc, entry) => {
+    const dateKey = getLocalDateKey(entry.occurredAt);
+    if (!dateKey) return acc;
+    const current = acc.get(dateKey) || { glasses: 0, count: 0 };
+    current.glasses += parseHistoryCalories(entry.value);
+    current.count += 1;
+    acc.set(dateKey, current);
+    return acc;
+  }, new Map<string, { glasses: number; count: number }>());
   const sleepMinutes = latestSleepEvent ? parseSleepDurationMinutes(latestSleepEvent.value) : 0;
   const sleepHours = sleepMinutes > 0 ? Number((sleepMinutes / 60).toFixed(1)) : 0;
   const sleepDurationLabel = formatSleepDurationLabel(sleepMinutes);
@@ -1373,12 +1412,144 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
 
     return parts.join("; ");
   })();
+  const activityDailyTotals = activityDataSessions.reduce((acc, session) => {
+    const dateKey = getLocalDateKey(session.finished_at);
+    if (!dateKey) return acc;
+    const current = acc.get(dateKey) || { steps: 0, distanceM: 0, calories: 0, durationSec: 0, count: 0 };
+    current.steps += Number(session.langkah) || 0;
+    current.distanceM += Number(session.distance_m) || 0;
+    current.calories += Number(session.kalori) || 0;
+    current.durationSec += Number(session.duration_sec) || 0;
+    current.count += 1;
+    acc.set(dateKey, current);
+    return acc;
+  }, new Map<string, { steps: number; distanceM: number; calories: number; durationSec: number; count: number }>());
+  const recentMealComparisonSummary = (() => {
+    const todayTotals = mealDailyTotals.get(currentDayKey) || { calories: 0, count: 0 };
+    const yesterdayTotals = mealDailyTotals.get(previousDayKey) || { calories: 0, count: 0 };
+
+    if (todayTotals.calories <= 0 && yesterdayTotals.calories <= 0) return "";
+
+    const parts: string[] = [];
+    if (todayTotals.calories > 0) {
+      const macroParts = [
+        totalMealCarbs > 0 ? `${totalMealCarbs.toLocaleString("id-ID")} g karbohidrat` : "",
+        totalMealProtein > 0 ? `${totalMealProtein.toLocaleString("id-ID")} g protein` : "",
+        totalMealFat > 0 ? `${totalMealFat.toLocaleString("id-ID")} g lemak` : "",
+        totalMealFiber > 0 ? `${totalMealFiber.toLocaleString("id-ID")} g serat` : "",
+      ].filter(Boolean);
+      parts.push(
+        `Hari ini ${todayTotals.calories.toLocaleString("id-ID")} kkal dari ${todayTotals.count} catatan makan${
+          macroParts.length > 0 ? ` (${macroParts.join(", ")})` : ""
+        }`
+      );
+    } else {
+      const todayLabel = getDateLabelFromKey(currentDayKey);
+      parts.push(`Hari ini belum ada catatan makan; ${todayLabel === "hari ini" ? "catatan terakhir" : `${todayLabel} terakhir`} tersedia di riwayat`);
+    }
+
+    if (yesterdayTotals.calories > 0) {
+      parts.push(`Kemarin ${yesterdayTotals.calories.toLocaleString("id-ID")} kkal dari ${yesterdayTotals.count} catatan`);
+    }
+
+    const delta = todayTotals.calories - yesterdayTotals.calories;
+    if (todayTotals.calories > 0 && yesterdayTotals.calories > 0 && delta !== 0) {
+      parts.push(`dibanding kemarin ${delta > 0 ? "naik" : "turun"} ${Math.abs(delta).toLocaleString("id-ID")} kkal`);
+    }
+
+    return parts.join("; ");
+  })();
+  const recentHydrationComparisonSummary = (() => {
+    const todayTotals = hydrationDailyTotals.get(currentDayKey) || { glasses: 0, count: 0 };
+    const yesterdayTotals = hydrationDailyTotals.get(previousDayKey) || { glasses: 0, count: 0 };
+
+    if (todayTotals.glasses <= 0 && yesterdayTotals.glasses <= 0) return "";
+
+    const parts: string[] = [];
+    if (todayTotals.glasses > 0) {
+      parts.push(`Hari ini ${todayTotals.glasses.toLocaleString("id-ID")} gelas air dari ${todayTotals.count} catatan`);
+    } else {
+      parts.push("Hari ini belum ada catatan hidrasi");
+    }
+
+    if (yesterdayTotals.glasses > 0) {
+      parts.push(`Kemarin ${yesterdayTotals.glasses.toLocaleString("id-ID")} gelas air dari ${yesterdayTotals.count} catatan`);
+    }
+
+    const delta = todayTotals.glasses - yesterdayTotals.glasses;
+    if (todayTotals.glasses > 0 && yesterdayTotals.glasses > 0 && delta !== 0) {
+      parts.push(`dibanding kemarin ${delta > 0 ? "naik" : "turun"} ${Math.abs(delta).toLocaleString("id-ID")} gelas`);
+    }
+
+    return parts.join("; ");
+  })();
+  const recentActivityComparisonSummary = (() => {
+    const todayTotals = activityDailyTotals.get(currentDayKey) || { steps: 0, distanceM: 0, calories: 0, durationSec: 0, count: 0 };
+    const yesterdayTotals = activityDailyTotals.get(previousDayKey) || { steps: 0, distanceM: 0, calories: 0, durationSec: 0, count: 0 };
+
+    if (
+      todayTotals.steps <= 0 &&
+      yesterdayTotals.steps <= 0 &&
+      todayTotals.distanceM <= 0 &&
+      yesterdayTotals.distanceM <= 0 &&
+      todayTotals.calories <= 0 &&
+      yesterdayTotals.calories <= 0
+    ) {
+      return "";
+    }
+
+    const parts: string[] = [];
+    if (todayTotals.steps > 0 || todayTotals.distanceM > 0 || todayTotals.calories > 0) {
+      const todayMetrics = [
+        todayTotals.steps > 0 ? `${todayTotals.steps.toLocaleString("id-ID")} langkah` : "",
+        todayTotals.distanceM > 0 ? `${(todayTotals.distanceM / 1000).toFixed(2)} km` : "",
+        todayTotals.calories > 0 ? `${Math.round(todayTotals.calories).toLocaleString("id-ID")} kkal terbakar` : "",
+      ].filter(Boolean);
+      parts.push(
+        `Hari ini ${todayMetrics.join(", ")}${todayTotals.durationSec > 0 ? ` selama ${formatDuration(todayTotals.durationSec)}` : ""}${
+          todayTotals.count > 0 ? ` dari ${todayTotals.count} sesi` : ""
+        }`
+      );
+    } else {
+      parts.push("Hari ini belum ada catatan aktivitas");
+    }
+
+    if (yesterdayTotals.steps > 0 || yesterdayTotals.distanceM > 0 || yesterdayTotals.calories > 0) {
+      const yesterdayMetrics = [
+        yesterdayTotals.steps > 0 ? `${yesterdayTotals.steps.toLocaleString("id-ID")} langkah` : "",
+        yesterdayTotals.distanceM > 0 ? `${(yesterdayTotals.distanceM / 1000).toFixed(2)} km` : "",
+        yesterdayTotals.calories > 0 ? `${Math.round(yesterdayTotals.calories).toLocaleString("id-ID")} kkal terbakar` : "",
+      ].filter(Boolean);
+      parts.push(`Kemarin ${yesterdayMetrics.join(", ")}${yesterdayTotals.count > 0 ? ` dari ${yesterdayTotals.count} sesi` : ""}`);
+    }
+
+    const stepDelta = todayTotals.steps - yesterdayTotals.steps;
+    const calorieDelta = todayTotals.calories - yesterdayTotals.calories;
+    const distanceDelta = todayTotals.distanceM - yesterdayTotals.distanceM;
+    const durationDelta = todayTotals.durationSec - yesterdayTotals.durationSec;
+    const deltaParts = [
+      stepDelta !== 0 ? `${stepDelta > 0 ? "naik" : "turun"} ${Math.abs(stepDelta).toLocaleString("id-ID")} langkah` : "",
+      calorieDelta !== 0 ? `${calorieDelta > 0 ? "naik" : "turun"} ${Math.abs(Math.round(calorieDelta)).toLocaleString("id-ID")} kkal` : "",
+      distanceDelta !== 0 ? `${distanceDelta > 0 ? "naik" : "turun"} ${(Math.abs(distanceDelta) / 1000).toFixed(2)} km` : "",
+      durationDelta !== 0 ? `${durationDelta > 0 ? "naik" : "turun"} ${formatDuration(Math.abs(durationDelta))}` : "",
+    ].filter(Boolean);
+    if (deltaParts.length > 0) {
+      parts.push(`dibanding kemarin ${deltaParts.join(", ")}`);
+    }
+
+    return parts.join("; ");
+  })();
+  const recentMostChangedSummary = [recentActivityComparisonSummary, recentMealComparisonSummary, recentHydrationComparisonSummary, recentWeightBmiSummary, recentSleepComparisonSummary, recentHeartRateSummary, recentBloodPressureSummary]
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .slice(0, 3)
+    .join(" | ");
   const mealCaloriesForBot = historyMealCaloriesTotal > 0 ? historyMealCaloriesTotal : mealCaloriesDisplay;
   const waterGlassesForBot = historyHydrationTotal > 0 ? historyHydrationTotal : waterGlasses;
-  const educationMealSummary = historyMealSummary || (hasMealData
+  const educationMealSummary = recentMealComparisonSummary || historyMealSummary || (hasMealData
     ? `${mealCaloriesDisplay.toLocaleString("id-ID")} kkal, ${carbsDisplay.toLocaleString("id-ID")} g karbohidrat, ${proteinDisplay.toLocaleString("id-ID")} g protein, ${fatDisplay.toLocaleString("id-ID")} g lemak, ${fiberDisplay.toLocaleString("id-ID")} g serat`
     : "");
-  const educationHydrationSummary = recentHydrationSummary || historyHydrationSummary || (waterGlasses > 0 ? `${waterGlasses} gelas air` : "");
+  const educationHydrationSummary = recentHydrationSummary || historyHydrationSummary || recentHydrationComparisonSummary || (waterGlasses > 0 ? `${waterGlasses} gelas air` : "");
   const recentTrendSummary = (() => {
     const latestRecord = measurementHistoryDb[0];
     const previousRecord = measurementHistoryDb[1];
@@ -1499,20 +1670,24 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     steps: totalActivitySteps,
     waterGlasses: waterGlassesForBot,
     mealCalories: mealCaloriesForBot,
-    mealSummary: educationMealSummary,
-    activitySummary: recentStepSummary || educationActivitySummary,
-    hydrationSummary: recentHydrationSummary || educationHydrationSummary,
+    mealSummary: recentMealComparisonSummary || educationMealSummary,
+    activitySummary: recentActivityComparisonSummary || recentStepSummary || educationActivitySummary,
+    hydrationSummary: recentHydrationComparisonSummary || recentHydrationSummary || educationHydrationSummary,
     recentBloodPressureSummary,
     recentStepSummary,
     recentHydrationSummary,
+    recentMealComparisonSummary,
+    recentHydrationComparisonSummary,
+    recentActivityComparisonSummary,
     recentWeightBmiSummary,
     recentSleepComparisonSummary,
     recentHeartRateSummary,
+    recentMostChangedSummary,
     sleepSummary: sleepHours > 0 ? `${sleepDurationLabel}${latestSleepEvent?.note && latestSleepEvent.note !== "-" ? ` • ${latestSleepEvent.note}` : ""}` : "",
     sleepHours,
     sleepStatus,
     sleepHistorySummary: recentSleepHistorySummary,
-    recentHistorySummary: [recentTrendSummary, recentWeightBmiSummary, recentSleepComparisonSummary, recentHeartRateSummary, recentBloodPressureSummary, recentStepSummary, recentHydrationSummary, recentMeasurementHistorySummary, recentActivityHistorySummary, recentNutritionHistorySummary, recentSleepHistorySummary]
+    recentHistorySummary: [recentTrendSummary, recentMealComparisonSummary, recentHydrationComparisonSummary, recentActivityComparisonSummary, recentMostChangedSummary, recentWeightBmiSummary, recentSleepComparisonSummary, recentHeartRateSummary, recentBloodPressureSummary, recentStepSummary, recentHydrationSummary, recentMeasurementHistorySummary, recentActivityHistorySummary, recentNutritionHistorySummary, recentSleepHistorySummary]
       .filter((item) => item.trim() !== "")
       .join(" | "),
     recentTrendSummary,

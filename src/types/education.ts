@@ -36,9 +36,13 @@ export type EducationSourceData = {
   recentBloodPressureSummary?: string;
   recentStepSummary?: string;
   recentHydrationSummary?: string;
+  recentMealComparisonSummary?: string;
+  recentHydrationComparisonSummary?: string;
+  recentActivityComparisonSummary?: string;
   recentWeightBmiSummary?: string;
   recentSleepComparisonSummary?: string;
   recentHeartRateSummary?: string;
+  recentMostChangedSummary?: string;
   recentHistorySummary?: string;
   recentTrendSummary?: string;
   prioritySummary?: string;
@@ -76,9 +80,13 @@ export type EducationPromptContext = {
   recentBloodPressureSummary: string;
   recentStepSummary: string;
   recentHydrationSummary: string;
+  recentMealComparisonSummary: string;
+  recentHydrationComparisonSummary: string;
+  recentActivityComparisonSummary: string;
   recentWeightBmiSummary: string;
   recentSleepComparisonSummary: string;
   recentHeartRateSummary: string;
+  recentMostChangedSummary: string;
 };
 
 export type EducationContext = {
