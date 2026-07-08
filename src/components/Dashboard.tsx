@@ -32,6 +32,10 @@ import {
   saveHealthPredictionForUser,
 } from "../services/healthPrediction";
 import {
+  loadHealthLearningSamplesForUser,
+  subscribeHealthLearningSamplesForUser,
+} from "../services/healthLearning";
+import {
   formatLocalDate,
   formatLocalDateTime,
   formatLocalTime,
@@ -1879,6 +1883,20 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     userUid,
   ]);
 
+  useEffect(() => {
+    if (!userUid || !storageReady) {
+      return;
+    }
+
+    void loadHealthLearningSamplesForUser(userUid).catch((error) => {
+      console.error("loadHealthLearningSamplesForUser failed", error);
+    });
+
+    return subscribeHealthLearningSamplesForUser(userUid, undefined, (error) => {
+      console.error("subscribeHealthLearningSamplesForUser failed", error);
+    });
+  }, [storageReady, userUid]);
+
   const selectedHelpArticle = activeHelpArticle ? helpArticles[activeHelpArticle] : null;
 
   const manualValue = (value: string | number, unit: string) => (
@@ -2050,6 +2068,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
           question: nextText,
           healthContext: educationContext,
           history: recentHistory,
+          userUid,
         });
         assistantText = educationReply.answer;
         assistantSources = educationReply.sources || [];

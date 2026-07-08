@@ -1,8 +1,10 @@
 import { analyzeEducationTopic, generateEducationReply, type EducationWebSource } from "./educationResponder";
 import { predictHealthStatus } from "./healthPrediction";
+import { recordHealthLearningSample } from "./healthLearning";
 import type {
   EducationContext,
   EducationHealthAnalysis,
+  EducationPredictionInput,
   EducationSourceData,
 } from "../types/education";
 
@@ -250,7 +252,24 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
   const bmiText = analysis.bmiValue > 0 ? analysis.bmiValue.toFixed(1) : "-";
   const bmiValue = analysis.bmiValue;
   const ageValue = normalizeAge(data.age);
+  const genderCode =
+    String(data.gender || "")
+      .toLowerCase()
+      .includes("laki") || String(data.gender || "").toLowerCase().includes("male") || String(data.gender || "").trim() === "1"
+      ? 1
+      : 0;
   const dataAvailability = analysis.dataAvailability;
+  const predictionInput: EducationPredictionInput = {
+    age: Number(ageValue),
+    gender: genderCode,
+    height_cm: Number(data.height || 0),
+    weight_kg: Number(data.weight || 0),
+    bmi: bmiValue,
+    heart_rate: Number(data.heartRate || 0),
+    systolic_bp: parseBloodPressure(data.bloodPressure).systolic,
+    diastolic_bp: parseBloodPressure(data.bloodPressure).diastolic,
+    steps: Number(data.steps || 0),
+  };
   const recentHistorySummary = data.recentHistorySummary?.trim() || "";
   const recentTrendSummary = data.recentTrendSummary?.trim() || "";
   const recentMeasurementSummary = data.recentMeasurementSummary?.trim() || "";
@@ -274,22 +293,7 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
   const predictionSummary = (() => {
     if (dataAvailability === "Belum ada data") return "KNN belum dipakai karena data kesehatan belum cukup.";
     try {
-      const prediction = predictHealthStatus({
-        age: Number(ageValue),
-        gender:
-          String(data.gender || "")
-            .toLowerCase()
-            .includes("laki") || String(data.gender || "").toLowerCase().includes("male") || String(data.gender || "").trim() === "1"
-            ? 1
-            : 0,
-        height_cm: Number(data.height || 0),
-        weight_kg: Number(data.weight || 0),
-        bmi: bmiValue,
-        heart_rate: Number(data.heartRate || 0),
-        systolic_bp: parseBloodPressure(data.bloodPressure).systolic,
-        diastolic_bp: parseBloodPressure(data.bloodPressure).diastolic,
-        steps: Number(data.steps || 0),
-      });
+      const prediction = predictHealthStatus(predictionInput);
       return `KNN membaca kondisi sebagai ${prediction.healthStatusLabel.toLowerCase()} dengan confidence ${Math.round(prediction.confidence * 100)}%.`;
     } catch {
       return "KNN belum berhasil membaca data ini.";
@@ -353,6 +357,7 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
       recentHeartRateSummary,
       recentMostChangedSummary,
       predictionSummary,
+      predictionInput,
       bloodPressure: bloodPressureText,
       bloodPressureStatus: analysis.bloodPressureStatus,
       heartRate: heartRateText,
@@ -494,6 +499,7 @@ export async function sendEducationQuestionToAI(input: {
   question: string;
   healthContext: EducationContext;
   history: ChatHistoryEntry[];
+  userUid?: string;
   onUpdate?: (partialText: string) => void;
 }) {
   const prompt = generateEducationPrompt(input.question, input.healthContext);
@@ -503,6 +509,38 @@ export async function sendEducationQuestionToAI(input: {
     history: input.history,
     onUpdate: input.onUpdate,
   });
+
+  if (input.userUid && input.healthContext.analysis.dataAvailability !== "Belum ada data") {
+    try {
+      const prediction = predictHealthStatus(input.healthContext.educationContext.predictionInput);
+      if (prediction.confidence >= 0.7) {
+        void recordHealthLearningSample(input.userUid, {
+          age: prediction.input.age,
+          gender: prediction.input.gender,
+          height_cm: prediction.input.height_cm,
+          weight_kg: prediction.input.weight_kg,
+          bmi: prediction.input.bmi,
+          heart_rate: prediction.input.heart_rate,
+          systolic_bp: prediction.input.systolic_bp,
+          diastolic_bp: prediction.input.diastolic_bp,
+          steps: prediction.input.steps,
+          label: prediction.healthStatusCode,
+          label_name: prediction.healthStatusLabel,
+          confidence: prediction.confidence,
+          support: prediction.confidence >= 0.85 ? 2 : 1,
+          source: "chat",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          note: `chat:${input.question.slice(0, 60)}`,
+          uid: input.userUid,
+        }).catch((error) => {
+          console.error("recordHealthLearningSample (chat) failed", error);
+        });
+      }
+    } catch (error) {
+      console.error("chat learning sample build failed", error);
+    }
+  }
 
   return {
     answer: response.answer,

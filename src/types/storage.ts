@@ -151,3 +151,24 @@ export type HealthPredictionDoc = {
   confidence: number;
   created_at: string;
 };
+
+export type HealthLearningSampleDoc = {
+  age: number;
+  gender: number;
+  height_cm: number;
+  weight_kg: number;
+  bmi: number;
+  heart_rate: number;
+  systolic_bp: number;
+  diastolic_bp: number;
+  steps: number;
+  label: number;
+  label_name: string;
+  support: number;
+  confidence: number;
+  source: "prediction" | "chat" | "manual";
+  created_at: string;
+  updated_at?: string;
+  note?: string;
+  uid?: string;
+};

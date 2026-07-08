@@ -63,6 +63,15 @@
         }
       }
     },
+    "ml_learning_samples": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "global": {
+        "$sampleId": {
+          ".validate": "newData.hasChildren(['age','gender','height_cm','weight_kg','bmi','heart_rate','systolic_bp','diastolic_bp','steps','label','label_name','support','confidence','source','created_at']) && newData.child('source').isString() && (newData.child('source').val() == 'prediction' || newData.child('source').val() == 'chat' || newData.child('source').val() == 'manual')"
+        }
+      }
+    },
     ".read": false,
     ".write": false
   }

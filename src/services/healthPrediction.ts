@@ -4,6 +4,7 @@ import modelMetadata from "../generated/health_status_model_metadata.json";
 import labelMapping from "../generated/label_mapping.json";
 import type { HealthPredictionDoc } from "../types/storage";
 import { db } from "./firebase";
+import { getHealthLearningSamples, recordHealthLearningSample } from "./healthLearning";
 
 type PredictionInput = {
   age: number;
@@ -20,6 +21,7 @@ type PredictionInput = {
 type KnnSample = {
   values: number[];
   label: number;
+  support?: number;
 };
 
 type KnnScaler = {
@@ -169,7 +171,12 @@ const minkowskiDistance = (left: number[], right: number[], p: number) => {
 const predictWithKnn = (input: PredictionInput) => {
   const featureVector = createFeatureVector(input);
   const standardizedInput = standardizeVector(featureVector, KNN.scaler);
-  const samples = Array.isArray(KNN.samples) ? KNN.samples : [];
+  const memorySamples = getHealthLearningSamples().map((sample) => ({
+    ...sample,
+    values: standardizeVector(sample.values, KNN.scaler),
+  }));
+  const baseSamples = Array.isArray(KNN.samples) ? KNN.samples : [];
+  const samples = [...baseSamples, ...memorySamples];
   const k = Math.max(1, Math.min(Number(KNN.k) || 3, samples.length || 1));
 
   if (samples.length === 0) {
@@ -186,6 +193,7 @@ const predictWithKnn = (input: PredictionInput) => {
   const scoredSamples = samples
     .map((sample) => ({
       label: sample.label,
+      support: Math.max(1, Number(sample.support || 1)),
       distance: minkowskiDistance(standardizedInput, sample.values, KNN.p || 1),
     }))
     .sort((left, right) => left.distance - right.distance)
@@ -207,7 +215,7 @@ const predictWithKnn = (input: PredictionInput) => {
   let totalWeight = 0;
 
   scoredSamples.forEach((sample) => {
-    const weight = KNN.weights === "uniform" ? 1 : 1 / Math.max(sample.distance, 1e-9);
+    const weight = (KNN.weights === "uniform" ? 1 : 1 / Math.max(sample.distance, 1e-9)) * Math.max(1, sample.support || 1);
     totalWeight += weight;
     votes.set(sample.label, (votes.get(sample.label) || 0) + weight);
   });
@@ -297,5 +305,29 @@ export async function saveHealthPredictionForUser(userUid: string, prediction: H
   };
 
   const predictionRef = await addDoc(collection(db, "users", userUid, "health_predictions"), payload);
+  if (prediction.confidence >= 0.65) {
+    void recordHealthLearningSample(userUid, {
+      age: prediction.input.age,
+      gender: prediction.input.gender,
+      height_cm: prediction.input.height_cm,
+      weight_kg: prediction.input.weight_kg,
+      bmi: prediction.input.bmi,
+      heart_rate: prediction.input.heart_rate,
+      systolic_bp: prediction.input.systolic_bp,
+      diastolic_bp: prediction.input.diastolic_bp,
+      steps: prediction.input.steps,
+      label: prediction.healthStatusCode,
+      label_name: prediction.healthStatusLabel,
+      confidence: prediction.confidence,
+      support: prediction.confidence >= 0.85 ? 2 : 1,
+      source: "prediction",
+      created_at: payload.created_at,
+      updated_at: payload.created_at,
+      note: `prediction:${predictionRef.id}`,
+      uid: userUid,
+    }).catch((error) => {
+      console.error("recordHealthLearningSample failed", error);
+    });
+  }
   return { ok: true as const, id: predictionRef.id, payload };
 }
