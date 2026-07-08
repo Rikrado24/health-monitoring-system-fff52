@@ -157,6 +157,43 @@ const extractGroundingSources = (metadata?: GroundingMetadataLike) => {
     .filter((source): source is EducationWebSource => source !== null);
 };
 
+const GREETING_KEYWORDS = [
+  "halo",
+  "hai",
+  "hi",
+  "hey",
+  "pagi",
+  "siang",
+  "sore",
+  "malam",
+  "assalamualaikum",
+  "assalamu'alaikum",
+  "assalamu alaikum",
+];
+
+const isGreetingQuestion = (question: string) => {
+  const normalized = question.toLowerCase().trim();
+  if (!normalized) return false;
+  return GREETING_KEYWORDS.some((keyword) => normalized === keyword || normalized.startsWith(`${keyword} `) || normalized.endsWith(` ${keyword}`));
+};
+
+const buildGreetingReply = (question: string, context: EducationContext) => {
+  const name = context.educationContext.patientName?.trim();
+  const namePart = name && name !== "Pasien" ? `, ${name}` : "";
+  const lowerQuestion = question.toLowerCase();
+  const salutation =
+    lowerQuestion.includes("pagi") || lowerQuestion.includes("siang") || lowerQuestion.includes("sore") || lowerQuestion.includes("malam")
+      ? question.trim().split(/\s+/)[0]
+      : "Halo";
+
+  return [
+    `Ringkasan: ${salutation}${namePart}, senang ketemu Anda.`,
+    `Data: Saya siap bantu membaca data kesehatan Anda yang tersedia di dashboard, seperti BMI, tekanan darah, detak jantung, aktivitas, hidrasi, dan pola makan.`,
+    `Saran: Silakan lanjutkan dengan pertanyaan kesehatan apa pun, misalnya "bagaimana kondisi saya hari ini" atau "apa arti tekanan darah saya?"`,
+    `Catatan: Kalau Anda mau, saya juga bisa bantu jelaskan data satu per satu dengan lebih pelan dan detail.`,
+  ].join("\n");
+};
+
 const TOPIC_KEYWORDS: Array<{ topic: EducationTopic; label: string; keywords: string[]; focus: string; guidance: string }> = [
   {
     topic: "tekanan_darah",
@@ -222,6 +259,7 @@ const isGeneralHealthQuestion = (question: string) => {
 
 const isHealthRelatedQuestion = (question: string, history: ChatHistoryEntry[]) => {
   const normalizedQuestion = question.toLowerCase();
+  if (isGreetingQuestion(question) || isGeneralHealthQuestion(question)) return true;
   const hasCurrentHealthKeyword = HEALTH_CONTEXT_KEYWORDS.some((keyword) => normalizedQuestion.includes(keyword));
   if (hasCurrentHealthKeyword) return true;
 
@@ -510,6 +548,7 @@ Kalau pertanyaan di luar topik kesehatan, jangan menjawab isi pertanyaannya; tol
 Kalau pertanyaan masih seputar kesehatan, prioritaskan parameter pengguna yang tersedia sebagai dasar utama.
 Jika data kurang, akui dengan jujur dan minta parameter yang dibutuhkan tanpa mengarang data.
 Jika merujuk web, prioritaskan sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.
+Untuk pertanyaan umum seperti "bagaimana kesehatan saya", jelaskan status keseluruhan, data yang paling berpengaruh, data yang masih kurang, dan 1-2 langkah praktis yang bisa dilakukan hari ini.
 
 Fokus topik:
 - Topik terdeteksi: ${input.topic.label}
@@ -559,6 +598,7 @@ Aturan jawaban:
   Catatan: ...
 - Setiap bagian cukup 1 sampai 2 kalimat pendek.
 - Minimal sebut 2 data kesehatan yang relevan jika datanya memang tersedia.
+- Jika pertanyaannya umum tentang kondisi kesehatan, boleh jawab sedikit lebih panjang daripada salam biasa agar terasa pintar dan detail.
 - Jangan menulis saran umum yang tidak menyebut data pendukungnya.
 - Jangan menyalin teks konteks mentah.
 - Kalau data kurang, akui dengan jujur dan minta data yang dibutuhkan dengan lembut.
@@ -573,6 +613,17 @@ ${input.question}
 `.trim();
 
 export async function generateEducationReply(input: GenerateEducationReplyInput) {
+  const hasHealthKeyword = HEALTH_CONTEXT_KEYWORDS.some((keyword) => input.question.toLowerCase().includes(keyword));
+  if (isGreetingQuestion(input.question) && !hasHealthKeyword && !isGeneralHealthQuestion(input.question)) {
+    return {
+      answer: buildGreetingReply(input.question, input.context),
+      grounded: false,
+      sources: [] as EducationWebSource[],
+      searchQueries: [] as string[],
+      searchEntryPointHtml: "",
+    };
+  }
+
   if (!isHealthRelatedQuestion(input.question, input.history)) {
     return {
       answer: REFUSAL_MESSAGE,
@@ -596,7 +647,7 @@ export async function generateEducationReply(input: GenerateEducationReplyInput)
         temperature: 0.2,
         topK: 20,
         topP: 0.8,
-        maxOutputTokens: 280,
+        maxOutputTokens: 420,
       },
     });
     const result = await educationModel.generateContentStream(prompt);
