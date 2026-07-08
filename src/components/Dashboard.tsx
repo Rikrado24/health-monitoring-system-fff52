@@ -1347,6 +1347,32 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
 
     return parts.join("; ");
   })();
+  const recentHeartRateSummary = (() => {
+    const records = measurementHistoryDb.filter((entry) => Number(entry.detak_jantung) > 0).slice(0, 2);
+    if (records.length === 0) return "";
+
+    const latestRecord = records[0];
+    const latestHeartRate = Number(latestRecord.detak_jantung) || 0;
+    if (latestHeartRate <= 0) return "";
+
+    const parts = [`Detak jantung terakhir ${latestHeartRate.toLocaleString("id-ID")} bpm`];
+    if (records[1]) {
+      const previousHeartRate = Number(records[1].detak_jantung) || 0;
+      if (previousHeartRate > 0 && previousHeartRate !== latestHeartRate) {
+        parts.push(`dibanding sebelumnya ${latestHeartRate > previousHeartRate ? "naik" : "turun"} ${Math.abs(latestHeartRate - previousHeartRate)} bpm`);
+      }
+    }
+
+    if (latestHeartRate < 60) {
+      parts.push("cenderung rendah");
+    } else if (latestHeartRate <= 100) {
+      parts.push("masih dalam rentang normal");
+    } else {
+      parts.push("cenderung tinggi");
+    }
+
+    return parts.join("; ");
+  })();
   const mealCaloriesForBot = historyMealCaloriesTotal > 0 ? historyMealCaloriesTotal : mealCaloriesDisplay;
   const waterGlassesForBot = historyHydrationTotal > 0 ? historyHydrationTotal : waterGlasses;
   const educationMealSummary = historyMealSummary || (hasMealData
@@ -1481,11 +1507,12 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     recentHydrationSummary,
     recentWeightBmiSummary,
     recentSleepComparisonSummary,
+    recentHeartRateSummary,
     sleepSummary: sleepHours > 0 ? `${sleepDurationLabel}${latestSleepEvent?.note && latestSleepEvent.note !== "-" ? ` • ${latestSleepEvent.note}` : ""}` : "",
     sleepHours,
     sleepStatus,
     sleepHistorySummary: recentSleepHistorySummary,
-    recentHistorySummary: [recentTrendSummary, recentWeightBmiSummary, recentSleepComparisonSummary, recentBloodPressureSummary, recentStepSummary, recentHydrationSummary, recentMeasurementHistorySummary, recentActivityHistorySummary, recentNutritionHistorySummary, recentSleepHistorySummary]
+    recentHistorySummary: [recentTrendSummary, recentWeightBmiSummary, recentSleepComparisonSummary, recentHeartRateSummary, recentBloodPressureSummary, recentStepSummary, recentHydrationSummary, recentMeasurementHistorySummary, recentActivityHistorySummary, recentNutritionHistorySummary, recentSleepHistorySummary]
       .filter((item) => item.trim() !== "")
       .join(" | "),
     recentTrendSummary,

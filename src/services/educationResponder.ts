@@ -316,6 +316,9 @@ const collectDataLines = (context: EducationContext) => {
     isMeaningfulValue(context.educationContext.recentSleepComparisonSummary)
       ? `Perbandingan tidur ${context.educationContext.recentSleepComparisonSummary}`
       : "",
+    isMeaningfulValue(context.educationContext.recentHeartRateSummary)
+      ? `Perbandingan detak jantung ${context.educationContext.recentHeartRateSummary}`
+      : "",
     isMeaningfulValue(context.educationContext.mealSummary) ? `Pola makan ${context.educationContext.mealSummary}` : "",
     isMeaningfulValue(context.educationContext.sleepSummary)
       ? `Pola tidur ${context.educationContext.sleepSummary} (${context.educationContext.sleepStatus || "Belum ada data"})`
@@ -338,6 +341,7 @@ const collectMissingData = (context: EducationContext) => {
     !isMeaningfulValue(context.educationContext.recentHydrationSummary) ? "riwayat hidrasi" : "",
     !isMeaningfulValue(context.educationContext.recentWeightBmiSummary) ? "perbandingan berat dan BMI" : "",
     !isMeaningfulValue(context.educationContext.recentSleepComparisonSummary) ? "perbandingan tidur" : "",
+    !isMeaningfulValue(context.educationContext.recentHeartRateSummary) ? "perbandingan detak jantung" : "",
     !isMeaningfulValue(context.educationContext.mealSummary) ? "pola makan" : "",
     !isMeaningfulValue(context.educationContext.sleepSummary) ? "pola tidur" : "",
     !isMeaningfulValue(context.educationContext.sleepHistorySummary) ? "riwayat tidur" : "",
@@ -349,6 +353,7 @@ const collectHistoryHighlights = (context: EducationContext) =>
     context.educationContext.recentTrendSummary,
     context.educationContext.recentWeightBmiSummary,
     context.educationContext.recentSleepComparisonSummary,
+    context.educationContext.recentHeartRateSummary,
     context.educationContext.recentHistorySummary,
     context.educationContext.recentMeasurementSummary,
     context.educationContext.recentActivitySummary,
@@ -479,6 +484,9 @@ Konteks kesehatan:
 - Durasi tidur: ${input.context.educationContext.sleepHours || "-"}
 - Status tidur: ${input.context.educationContext.sleepStatus || "-"}
 - Riwayat tidur: ${input.context.educationContext.sleepHistorySummary || "-"}
+- Perbandingan berat/BMI: ${input.context.educationContext.recentWeightBmiSummary || "-"}
+- Perbandingan tidur: ${input.context.educationContext.recentSleepComparisonSummary || "-"}
+- Perbandingan detak jantung: ${input.context.educationContext.recentHeartRateSummary || "-"}
 - Tekanan darah: ${input.context.educationContext.bloodPressure}
 - Status tekanan darah: ${input.context.educationContext.bloodPressureStatus}
 - Detak jantung: ${input.context.educationContext.heartRate}
@@ -497,6 +505,9 @@ Analisis cepat:
 - Ringkasan tekanan darah riwayat: ${input.context.educationContext.recentBloodPressureSummary || "-"}
 - Ringkasan langkah riwayat: ${input.context.educationContext.recentStepSummary || "-"}
 - Ringkasan hidrasi riwayat: ${input.context.educationContext.recentHydrationSummary || "-"}
+- Ringkasan berat/BMI riwayat: ${input.context.educationContext.recentWeightBmiSummary || "-"}
+- Ringkasan tidur riwayat: ${input.context.educationContext.recentSleepComparisonSummary || "-"}
+- Ringkasan detak jantung riwayat: ${input.context.educationContext.recentHeartRateSummary || "-"}
 
 Snapshot data:
 - Data yang tersedia: ${collectDataLines(input.context).join(" | ") || "belum ada data yang bisa dipakai"}
