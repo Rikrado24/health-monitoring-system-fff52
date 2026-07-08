@@ -31,6 +31,7 @@ export type EducationSourceData = {
   sleepSummary?: string;
   recentHistorySummary?: string;
   recentTrendSummary?: string;
+  prioritySummary?: string;
   recentMeasurementSummary?: string;
   recentActivitySummary?: string;
   recentNutritionSummary?: string;
@@ -47,6 +48,7 @@ export type EducationPromptContext = {
   healthSummary: string;
   recentHistorySummary: string;
   recentTrendSummary: string;
+  prioritySummary: string;
   recentMeasurementSummary: string;
   recentActivitySummary: string;
   recentNutritionSummary: string;

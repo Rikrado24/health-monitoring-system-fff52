@@ -1200,6 +1200,73 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
 
     return notes.join("; ");
   })();
+  const prioritySummary = (() => {
+    const items = [
+      {
+        label: "Tekanan darah",
+        score: bpStatus === "Tinggi" ? 100 : bpStatus === "Rendah" ? 95 : bpStatus === "Waspada" ? 85 : 0,
+        note:
+          bpStatus === "Tinggi"
+            ? `terdeteksi tinggi (${bloodPressure})`
+            : bpStatus === "Rendah"
+              ? `terdeteksi rendah (${bloodPressure})`
+              : bpStatus === "Waspada"
+                ? `perlu dipantau (${bloodPressure})`
+                : "",
+      },
+      {
+        label: "Detak jantung",
+        score: hrStatus === "Tinggi" ? 90 : hrStatus === "Rendah" ? 80 : 0,
+        note:
+          hrStatus === "Tinggi"
+            ? `terdeteksi tinggi (${heartRate} bpm)`
+            : hrStatus === "Rendah"
+              ? `terdeteksi rendah (${heartRate} bpm)`
+              : "",
+      },
+      {
+        label: "BMI",
+        score: dashboardBmi > 0 && dashboardBmi < 18.5 ? 75 : dashboardBmi >= 30 ? 80 : dashboardBmi >= 25 ? 70 : 0,
+        note:
+          dashboardBmi > 0 && dashboardBmi < 18.5
+            ? `BMI ${dashboardBmi.toFixed(1)} tergolong kurang`
+            : dashboardBmi >= 30
+              ? `BMI ${dashboardBmi.toFixed(1)} tergolong obesitas`
+              : dashboardBmi >= 25
+                ? `BMI ${dashboardBmi.toFixed(1)} tergolong overweight`
+                : "",
+      },
+      {
+        label: "Aktivitas",
+        score: totalActivitySteps <= 0 ? 0 : totalActivitySteps < 4000 ? 70 : totalActivitySteps < 7000 ? 55 : 0,
+        note:
+          totalActivitySteps <= 0
+            ? "belum ada data langkah"
+            : totalActivitySteps < 4000
+              ? `langkah harian masih rendah (${totalActivitySteps.toLocaleString("id-ID")})`
+              : totalActivitySteps < 7000
+                ? `langkah harian masih sedang (${totalActivitySteps.toLocaleString("id-ID")})`
+                : "",
+      },
+      {
+        label: "Hidrasi",
+        score: waterGlasses <= 0 ? 0 : waterGlasses < 7 ? 60 : 0,
+        note: waterGlasses <= 0 ? "belum ada data hidrasi" : waterGlasses < 7 ? `${waterGlasses} gelas, masih perlu ditambah` : "",
+      },
+      {
+        label: "Pola tidur",
+        score: sleepHours > 0 ? 45 : 0,
+        note: sleepHours > 0 ? `${sleepHours} jam tidur` : "",
+      },
+    ]
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4);
+
+    return items.length > 0
+      ? items.map((item) => `${item.label} (${item.score}/100${item.note ? `, ${item.note}` : ""})`).join("; ")
+      : "Tidak ada prioritas khusus";
+  })();
   const latestEducationUserMessage =
     [...educationChatMessages].reverse().find((message) => message.role === "user")?.text || "";
   const educationContext = buildEducationContext({
@@ -1225,6 +1292,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       .filter((item) => item.trim() !== "")
       .join(" | "),
     recentTrendSummary,
+    prioritySummary,
     recentMeasurementSummary: recentMeasurementHistorySummary,
     recentActivitySummary: recentActivityHistorySummary,
     recentNutritionSummary: recentNutritionHistorySummary,

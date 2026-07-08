@@ -188,6 +188,7 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
   const recentActivitySummary = data.recentActivitySummary?.trim() || "";
   const recentNutritionSummary = data.recentNutritionSummary?.trim() || "";
   const sleepSummary = data.sleepSummary?.trim() || "";
+  const prioritySummary = data.prioritySummary?.trim() || "";
   const bloodPressureText = normalizeText(data.bloodPressure);
   const heartRateText = data.heartRate && data.heartRate > 0 ? `${formatNumber(data.heartRate)} bpm` : "-";
   const activityText = data.activitySummary?.trim() || (data.steps && data.steps > 0 ? `${formatNumber(data.steps)} langkah hari ini` : "-");
@@ -209,10 +210,12 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
         recentActivitySummary ? `Riwayat aktivitas: ${recentActivitySummary}` : "",
         recentNutritionSummary ? `Riwayat nutrisi: ${recentNutritionSummary}` : "",
         sleepSummary ? `Pola tidur: ${sleepSummary}` : "",
+        prioritySummary ? `Prioritas: ${prioritySummary}` : "",
         `Status keseluruhan: ${analysis.overallStatus.toLowerCase()}.`,
       ]),
       recentHistorySummary,
       recentTrendSummary,
+      prioritySummary,
       recentMeasurementSummary,
       recentActivitySummary,
       recentNutritionSummary,
@@ -281,6 +284,7 @@ Analisis cepat:
 - Riwayat aktivitas: ${healthContext.educationContext.recentActivitySummary || "-"}
 - Riwayat nutrisi: ${healthContext.educationContext.recentNutritionSummary || "-"}
 - Pola tidur: ${healthContext.educationContext.sleepSummary || "-"}
+- Prioritas parameter: ${healthContext.educationContext.prioritySummary || "-"}
 
 Aturan jawaban:
 - Gunakan bahasa Indonesia yang natural dan akrab.
@@ -289,6 +293,7 @@ Aturan jawaban:
 - Jika pertanyaannya umum tentang kondisi kesehatan, boleh buat jawaban sedikit lebih panjang agar terasa detail dan peka konteks.
 - Bandingkan data terbaru dengan riwayat sebelumnya bila ada perubahan yang terlihat.
 - Jadikan riwayat data sebagai dasar utama, bukan cuma angka terakhir.
+- Mulai dari prioritas parameter yang paling berisiko atau paling berubah.
 - Kalau pola tidur tersedia, ikut pertimbangkan karena tidur memengaruhi kondisi kesehatan umum.
 - Kalau data kurang, bilang jujur dan minta data yang dibutuhkan dengan lembut.
 - Jika ada rujukan web, tampilkan hanya sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.

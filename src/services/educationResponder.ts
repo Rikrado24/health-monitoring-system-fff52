@@ -435,6 +435,7 @@ Konteks kesehatan:
 - Ringkasan kesehatan: ${input.context.educationContext.healthSummary}
 - Riwayat terbaru: ${input.context.educationContext.recentHistorySummary || "-"}
 - Tren terbaru: ${input.context.educationContext.recentTrendSummary || "-"}
+- Prioritas parameter: ${input.context.educationContext.prioritySummary || "-"}
 - Riwayat pengukuran: ${input.context.educationContext.recentMeasurementSummary || "-"}
 - Riwayat aktivitas: ${input.context.educationContext.recentActivitySummary || "-"}
 - Riwayat nutrisi: ${input.context.educationContext.recentNutritionSummary || "-"}
@@ -464,6 +465,7 @@ Gaya jawaban:
 - Buat bahasa terasa personal, seolah sedang bicara langsung dengan satu orang.
 - Saat cocok, pakai validasi singkat seperti "Saya tangkap" atau "Saya mengerti".
 - Jadikan riwayat data sebagai dasar utama, bukan cuma data terakhir.
+- Mulai dari parameter yang paling berisiko atau paling berubah.
 - Kalau ada perubahan dari riwayat, sebutkan perubahan itu secara eksplisit.
 - Selalu tutup dengan langkah sederhana yang bisa dilakukan hari ini.
 - Jika ada rujukan web, tampilkan hanya sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.
