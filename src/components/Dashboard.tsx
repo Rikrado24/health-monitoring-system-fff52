@@ -395,6 +395,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const [educationSpeechOutputSupported, setEducationSpeechOutputSupported] = useState(false);
   const [educationListening, setEducationListening] = useState(false);
   const [educationSpeaking, setEducationSpeaking] = useState(false);
+  const [educationReplying, setEducationReplying] = useState(false);
   const educationSpeechRecognitionRef = useRef<SpeechRecognitionInstanceLike | null>(null);
   const educationSpeechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const educationChatEndRef = useRef<HTMLDivElement | null>(null);
@@ -1453,6 +1454,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const normalizeDeviceId = (value: string) => value.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "-").replace(/-+/g, "-");
 
   const sendEducationChatMessage = async (prefilledMessage?: string) => {
+    if (educationReplying) return;
     const nextText = (prefilledMessage ?? educationChatInput).trim();
     if (!nextText) return;
 
@@ -1467,45 +1469,53 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       role: message.role,
       text: message.text,
     }));
-    setEducationChatInput(nextText);
-    let assistantText = "";
     try {
-      const educationReply = await sendEducationQuestionToAI({
-        question: nextText,
-        healthContext: educationContext,
-        history: recentHistory,
-      });
-      assistantText = educationReply.answer;
-    } catch {
-      assistantText = "Maaf, saya belum bisa menjawab sekarang. Coba lagi sebentar ya.";
-    }
-    const assistantMessage: VirtualEducationMessage = {
-      id: `assistant-${timestamp}`,
-      role: "assistant",
-      text: assistantText,
-      createdAt: new Date(Date.now() + 1).toISOString(),
-    };
+      setEducationChatInput(nextText);
+      setEducationReplying(true);
+      setEducationChatMessages((current) => [...current, userMessage].slice(-EDUCATION_CHAT_MESSAGE_LIMIT));
+      setEducationChatInput("");
 
-    setEducationChatMessages((current) => [...current, userMessage, assistantMessage].slice(-EDUCATION_CHAT_MESSAGE_LIMIT));
-    setEducationChatInput("");
-
-    if (userUid && storageReady) {
+      let assistantText = "";
       try {
-        await Promise.all([
-          createEducationChatMessageForUser(userUid, {
-            role: userMessage.role,
-            text: userMessage.text,
-            createdAt: userMessage.createdAt,
-          }),
-          createEducationChatMessageForUser(userUid, {
-            role: assistantMessage.role,
-            text: assistantMessage.text,
-            createdAt: assistantMessage.createdAt,
-          }),
-        ]);
+        const educationReply = await sendEducationQuestionToAI({
+          question: nextText,
+          healthContext: educationContext,
+          history: recentHistory,
+        });
+        assistantText = educationReply.answer;
       } catch {
-        notify("Percakapan edukasi tetap berjalan, tetapi riwayat belum berhasil disimpan.");
+        assistantText = "Maaf, saya belum bisa menjawab sekarang. Coba lagi sebentar ya.";
       }
+
+      const assistantMessage: VirtualEducationMessage = {
+        id: `assistant-${timestamp}`,
+        role: "assistant",
+        text: assistantText,
+        createdAt: new Date(Date.now() + 1).toISOString(),
+      };
+
+      setEducationChatMessages((current) => [...current, assistantMessage].slice(-EDUCATION_CHAT_MESSAGE_LIMIT));
+
+      if (userUid && storageReady) {
+        try {
+          await Promise.all([
+            createEducationChatMessageForUser(userUid, {
+              role: userMessage.role,
+              text: userMessage.text,
+              createdAt: userMessage.createdAt,
+            }),
+            createEducationChatMessageForUser(userUid, {
+              role: assistantMessage.role,
+              text: assistantMessage.text,
+              createdAt: assistantMessage.createdAt,
+            }),
+          ]);
+        } catch {
+          notify("Percakapan edukasi tetap berjalan, tetapi riwayat belum berhasil disimpan.");
+        }
+      }
+    } finally {
+      setEducationReplying(false);
     }
   };
 
@@ -4690,7 +4700,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
 
               {activeMenu === "Edukasi" ? (
                 <section className="mt-4">
-                  <article className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
+                  <article className="flex min-h-[calc(100vh-260px)] flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
                     <div className="border-b border-slate-100 bg-[linear-gradient(180deg,#f8fbf9_0%,#ffffff_100%)] px-5 py-5 md:px-6">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="max-w-3xl">
@@ -4723,11 +4733,11 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                       </div>
                     </div>
 
-                    <div className="bg-[linear-gradient(180deg,#f7faf8_0%,#ffffff_100%)] px-4 py-5 md:px-6">
-                      <div className="flex max-h-[68vh] min-h-[560px] flex-col gap-4 overflow-y-auto pr-1">
+                    <div className="flex-1 bg-[linear-gradient(180deg,#f7faf8_0%,#ffffff_100%)] px-4 py-4 md:px-6">
+                      <div className="flex max-h-[68vh] min-h-[520px] flex-col gap-2 overflow-y-auto pr-1">
                         {educationChatMessages.length === 0 ? (
                           <div className="flex">
-                            <div className="max-w-[92%] rounded-[28px] rounded-bl-md border border-emerald-100 bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.04)] md:max-w-[78%]">
+                            <div className="max-w-[88%] rounded-[22px] rounded-bl-md border border-emerald-100 bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.05)] md:max-w-[72%]">
                               <p className="font-black text-slate-950">Saya siap bantu.</p>
                               <p className="mt-1">
                                 Coba tanya tentang BMI, tekanan darah, detak jantung, aktivitas, hidrasi, atau pola makan.
@@ -4743,42 +4753,73 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                           const isUser = message.role === "user";
                           return (
                             <div key={message.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-                              <div
-                                className={`max-w-[92%] rounded-[28px] px-4 py-3 text-sm leading-6 shadow-[0_12px_28px_rgba(15,23,42,0.04)] md:max-w-[78%] ${
-                                  isUser
-                                    ? "rounded-br-md bg-emerald-700 text-white"
-                                    : "rounded-bl-md border border-emerald-100 bg-white text-slate-700"
-                                }`}
-                              >
-                                <div className={`mb-2 flex items-center justify-between gap-3 text-[11px] font-black uppercase tracking-[0.18em] ${isUser ? "text-emerald-100" : "text-emerald-700"}`}>
-                                  <span>{isUser ? "Anda" : "Asisten Kesehatan"}</span>
-                                  <span className={isUser ? "text-emerald-100/80" : "text-slate-400"}>
-                                    {formatLocalTime(message.createdAt)}
-                                  </span>
+                              <div className={`flex max-w-[88%] items-end gap-2 md:max-w-[72%] ${isUser ? "flex-row-reverse" : ""}`}>
+                                <div
+                                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-full shadow-sm ${
+                                    isUser ? "bg-emerald-700 text-white" : "border border-emerald-100 bg-white text-emerald-700"
+                                  }`}
+                                >
+                                  <i className={`fa-solid ${isUser ? "fa-user" : "fa-robot"} text-[12px]`} />
                                 </div>
-                                <p className="whitespace-pre-wrap break-words">{message.text}</p>
-                                {!isUser ? (
-                                  <div className="mt-3 flex items-center justify-end gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => speakEducationAnswer(message.text)}
-                                      className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-100"
-                                      disabled={!educationSpeechOutputSupported}
-                                    >
-                                      <i className="fa-solid fa-volume-high" />
-                                      Dengarkan
-                                    </button>
+                                <div
+                                  className={`rounded-[22px] px-4 py-3 text-sm leading-6 shadow-[0_10px_24px_rgba(15,23,42,0.05)] ${
+                                    isUser
+                                      ? "rounded-br-md bg-[linear-gradient(135deg,#0f9f6b_0%,#0b7f58_100%)] text-white"
+                                      : "rounded-bl-md border border-emerald-100 bg-white text-slate-700"
+                                  }`}
+                                >
+                                  <div
+                                    className={`mb-2 flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-[0.2em] ${
+                                      isUser ? "text-emerald-50/90" : "text-emerald-700"
+                                    }`}
+                                  >
+                                    <span>{isUser ? "Anda" : "Asisten Kesehatan"}</span>
+                                    <span className={isUser ? "text-emerald-50/70" : "text-slate-400"}>{formatLocalTime(message.createdAt)}</span>
                                   </div>
-                                ) : null}
+                                  <p className="whitespace-pre-wrap break-words">{message.text}</p>
+                                  {!isUser ? (
+                                    <div className="mt-3 flex items-center justify-end gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => speakEducationAnswer(message.text)}
+                                        className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-100"
+                                        disabled={!educationSpeechOutputSupported}
+                                      >
+                                        <i className="fa-solid fa-volume-high" />
+                                        Dengarkan
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
                               </div>
                             </div>
                           );
                         })}
+
+                        {educationReplying ? (
+                          <div className="flex justify-start">
+                            <div className="flex max-w-[72%] items-end gap-2">
+                              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-emerald-100 bg-white text-emerald-700 shadow-sm">
+                                <i className="fa-solid fa-robot text-[12px]" />
+                              </div>
+                              <div className="rounded-[22px] rounded-bl-md border border-emerald-100 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-emerald-700">
+                                  <span>Sedang menulis</span>
+                                  <span className="flex items-center gap-1">
+                                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-500 [animation-delay:-0.25s]" />
+                                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-500 [animation-delay:-0.1s]" />
+                                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-500" />
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
                         <div ref={educationChatEndRef} />
                       </div>
                     </div>
 
-                    <div className="border-t border-slate-100 bg-white px-4 py-4 md:px-6">
+                    <div className="sticky bottom-0 z-10 border-t border-slate-100 bg-white/90 px-4 py-4 backdrop-blur md:px-6">
                       <div className="flex flex-col gap-3 md:flex-row md:items-end">
                         <textarea
                           value={educationChatInput}
@@ -4789,9 +4830,10 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                               void sendEducationChatMessage();
                             }
                           }}
-                          className="min-h-[72px] flex-1 resize-none rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                          className="min-h-[74px] flex-1 resize-none rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                           maxLength={240}
-                          placeholder="Tulis pertanyaan kesehatan Anda di sini..."
+                          placeholder={educationReplying ? "Asisten sedang menulis..." : "Tulis pertanyaan kesehatan Anda di sini..."}
+                          disabled={educationReplying}
                         />
                         <div className="flex items-center gap-2 self-end md:self-auto">
                           <button
@@ -4800,10 +4842,10 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                             className={`grid h-12 w-12 place-items-center rounded-full border text-white shadow-[0_14px_28px_rgba(15,23,42,0.14)] transition ${
                               educationListening
                                 ? "border-rose-300 bg-rose-600 hover:bg-rose-500"
-                                : "border-emerald-200 bg-emerald-700 hover:bg-emerald-800"
+                              : "border-emerald-200 bg-emerald-700 hover:bg-emerald-800"
                             }`}
                             aria-label={educationListening ? "Hentikan rekaman suara" : "Bicara dengan suara"}
-                            disabled={!educationSpeechInputSupported}
+                            disabled={!educationSpeechInputSupported || educationReplying}
                             title={educationSpeechInputSupported ? "Gunakan mikrofon untuk mengisi pertanyaan" : "Browser belum mendukung input suara"}
                           >
                             <i className={`fa-solid ${educationListening ? "fa-stop" : "fa-microphone"} text-base`} />
@@ -4811,8 +4853,9 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                           <button
                             type="button"
                             onClick={() => void sendEducationChatMessage()}
-                            className="grid h-12 w-12 place-items-center rounded-full bg-emerald-700 text-white shadow-[0_14px_28px_rgba(16,185,129,0.18)] transition hover:bg-emerald-800"
+                            className="grid h-12 w-12 place-items-center rounded-full bg-emerald-700 text-white shadow-[0_14px_28px_rgba(16,185,129,0.18)] transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
                             aria-label="Kirim pertanyaan"
+                            disabled={educationReplying || !educationChatInput.trim()}
                           >
                             <i className="fa-solid fa-paper-plane text-base" />
                           </button>
@@ -4823,6 +4866,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                           <i className="fa-solid fa-shield-heart" />
                           Edukasi, bukan diagnosis
                         </span>
+                        {educationReplying ? <span className="text-emerald-700">Asisten sedang menulis jawaban...</span> : null}
                         <span>Tekan Enter untuk kirim, Shift+Enter untuk baris baru.</span>
                       </div>
                     </div>
