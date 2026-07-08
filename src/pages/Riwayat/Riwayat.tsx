@@ -3,7 +3,7 @@ import MobileLayout from "../../components/layout/MobileLayout";
 import PageHeader from "../../components/layout/PageHeader";
 import type { MeasurementHistoryDoc } from "../../types/storage";
 
-const HISTORY_FILTERS = ["Semua", "Pengukuran", "Sinkronisasi Alat", "Aktivitas", "Pola Makan", "Hidrasi"] as const;
+const HISTORY_FILTERS = ["Semua", "Pengukuran", "Sinkronisasi Alat", "Aktivitas", "Pola Makan", "Hidrasi", "Tidur"] as const;
 const HISTORY_RANGE_OPTIONS = ["7 Hari Terakhir", "30 Hari Terakhir", "Semua Waktu"] as const;
 const HISTORY_MODE_OPTIONS = ["Event Final", "Pengukuran Tersimpan"] as const;
 const HISTORY_VIEW_OPTIONS = ["Timeline Riwayat", "Tabel Pengukuran"] as const;
@@ -14,6 +14,7 @@ const HISTORY_FILTER_ICONS: Record<(typeof HISTORY_FILTERS)[number], string> = {
   Aktivitas: "fa-shoe-prints",
   "Pola Makan": "fa-utensils",
   Hidrasi: "fa-droplet",
+  Tidur: "fa-moon",
 };
 
 const INDONESIAN_MONTHS: Record<string, number> = {
@@ -80,6 +81,38 @@ const getHistoryGroupLabel = (value: string) => {
   return "Riwayat Sebelumnya";
 };
 
+const parseSleepDurationMinutes = (value: string) => {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!normalized) return 0;
+
+  const durationMatch = normalized.match(/(\d+(?:[.,]\d+)?)\s*(?:jam|j)\s*(?:(\d+(?:[.,]\d+)?)\s*(?:menit|m))?/);
+  if (durationMatch) {
+    const hours = Number(durationMatch[1].replace(",", ".")) || 0;
+    const minutes = Number(durationMatch[2]?.replace(",", ".") || 0) || 0;
+    return Math.max(0, Math.round(hours * 60 + minutes));
+  }
+
+  const rangeMatch = normalized.match(/(\d{1,2}):(\d{2})\s*[-–—]\s*(\d{1,2}):(\d{2})/);
+  if (rangeMatch) {
+    const startMinutes = Number(rangeMatch[1]) * 60 + Number(rangeMatch[2]);
+    const endMinutes = Number(rangeMatch[3]) * 60 + Number(rangeMatch[4]);
+    if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return 0;
+    return endMinutes >= startMinutes ? endMinutes - startMinutes : endMinutes + 24 * 60 - startMinutes;
+  }
+
+  return 0;
+};
+
+const formatSleepDurationLabel = (minutes: number) => {
+  if (!Number.isFinite(minutes) || minutes <= 0) return "-";
+  const roundedMinutes = Math.round(minutes);
+  const hours = Math.floor(roundedMinutes / 60);
+  const remainder = roundedMinutes % 60;
+  if (hours > 0 && remainder > 0) return `${hours} jam ${remainder} menit`;
+  if (hours > 0) return `${hours} jam`;
+  return `${remainder} menit`;
+};
+
 const getDataTypeTone = (dataType: string) => {
   switch (dataType) {
     case "Pengukuran":
@@ -106,6 +139,11 @@ const getDataTypeTone = (dataType: string) => {
       return {
         badge: "bg-sky-50 text-sky-700 border-sky-200",
         status: "text-sky-700",
+      };
+    case "Tidur":
+      return {
+        badge: "bg-indigo-50 text-indigo-700 border-indigo-200",
+        status: "text-indigo-700",
       };
     case "Tekanan Darah":
       return {
@@ -147,6 +185,8 @@ const getDataTypeIcon = (dataType: string) => {
       return "fa-utensils";
     case "Hidrasi":
       return "fa-droplet";
+    case "Tidur":
+      return "fa-moon";
     case "Tekanan Darah":
       return "fa-heart-pulse";
     case "Detak Jantung":
@@ -329,6 +369,12 @@ function RiwayatContent({
         : 0,
     latestSteps: measurementCards[0]?.langkah_kaki || 0,
   };
+  const sleepTimelineRows = activeTimelineRows.filter((row) => row[1] === "Tidur");
+  const averageSleepMinutes =
+    sleepTimelineRows.length > 0
+      ? Math.round(sleepTimelineRows.reduce((total, row) => total + parseSleepDurationMinutes(row[2]), 0) / sleepTimelineRows.length)
+      : 0;
+  const averageSleepLabel = formatSleepDurationLabel(averageSleepMinutes);
   const reportRows = measurementCards.slice(0, 8);
   const reportEventCount = activeTimelineRows.length;
   const openMeasurementDetail = (row: MeasurementDisplayRow) => setSelectedMeasurement(row);
@@ -851,7 +897,7 @@ function RiwayatContent({
             <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>Total Event</span><span className="font-semibold">{hasAnyData ? activeTimelineRows.length : "-"}</span></div>
             <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>Rata-rata Tensi</span><span className="font-semibold">{hasBloodPressure ? bloodPressure : "-"}</span></div>
             <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>Rata-rata Jantung</span><span className="font-semibold">{hasHeartRate ? `${heartRate} bpm` : "-"}</span></div>
-            <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>Rata-rata Tidur</span><span className="font-semibold">Belum ada data</span></div>
+            <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>Rata-rata Tidur</span><span className="font-semibold">{averageSleepMinutes > 0 ? averageSleepLabel : "-"}</span></div>
           </div>
           <button
             type="button"

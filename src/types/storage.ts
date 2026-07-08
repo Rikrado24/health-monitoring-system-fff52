@@ -107,7 +107,8 @@ export type HistoryEventDoc = {
     | "Sinkronisasi Alat"
     | "Aktivitas"
     | "Pola Makan"
-    | "Hidrasi";
+    | "Hidrasi"
+    | "Tidur";
   value: string;
   category: string;
   status: string;

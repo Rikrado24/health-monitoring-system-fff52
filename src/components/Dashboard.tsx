@@ -93,6 +93,7 @@ const RIWAYAT_FILTER_OPTIONS = [
   "Aktivitas",
   "Pola Makan",
   "Hidrasi",
+  "Tidur",
 ] as const;
 const MEASUREMENT_DERIVED_HISTORY_SOURCES = new Set(["esp32_s3", "web_manual", "web_sync", "app_mobile"]);
 const EDUCATION_CHAT_MESSAGE_LIMIT = 8;
@@ -248,6 +249,53 @@ const writeLocalEditableProfile = (storageKey: string, profile: EditableProfile)
 };
 
 const normalizeHistoryText = (value: string) => value.replace(/\s+/g, " ").trim();
+
+const parseSleepDurationMinutes = (value: string) => {
+  const normalized = normalizeHistoryText(String(value || "")).toLowerCase();
+  if (!normalized) return 0;
+
+  const durationMatch = normalized.match(/(\d+(?:[.,]\d+)?)\s*(?:jam|j)\s*(?:(\d+(?:[.,]\d+)?)\s*(?:menit|m))?/);
+  if (durationMatch) {
+    const hours = Number(durationMatch[1].replace(",", ".")) || 0;
+    const minutes = Number(durationMatch[2]?.replace(",", ".") || 0) || 0;
+    return Math.max(0, Math.round(hours * 60 + minutes));
+  }
+
+  const rangeMatch = normalized.match(/(\d{1,2}):(\d{2})\s*[-–—]\s*(\d{1,2}):(\d{2})/);
+  if (rangeMatch) {
+    const startMinutes = Number(rangeMatch[1]) * 60 + Number(rangeMatch[2]);
+    const endMinutes = Number(rangeMatch[3]) * 60 + Number(rangeMatch[4]);
+    if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return 0;
+    return endMinutes >= startMinutes ? endMinutes - startMinutes : endMinutes + 24 * 60 - startMinutes;
+  }
+
+  return 0;
+};
+
+const formatSleepDurationLabel = (minutes: number) => {
+  if (!Number.isFinite(minutes) || minutes <= 0) return "-";
+  const safeMinutes = Math.round(minutes);
+  const hours = Math.floor(safeMinutes / 60);
+  const remainder = safeMinutes % 60;
+  if (hours > 0 && remainder > 0) return `${hours} jam ${remainder} menit`;
+  if (hours > 0) return `${hours} jam`;
+  return `${remainder} menit`;
+};
+
+const calculateSleepDurationMinutes = (bedtime: string, wakeTime: string) => {
+  const [startHourRaw, startMinuteRaw] = String(bedtime || "").split(":");
+  const [endHourRaw, endMinuteRaw] = String(wakeTime || "").split(":");
+  const startHour = Number(startHourRaw);
+  const startMinute = Number(startMinuteRaw);
+  const endHour = Number(endHourRaw);
+  const endMinute = Number(endMinuteRaw);
+
+  if (![startHour, startMinute, endHour, endMinute].every((value) => Number.isFinite(value))) return 0;
+
+  const startTotal = startHour * 60 + startMinute;
+  const endTotal = endHour * 60 + endMinute;
+  return endTotal >= startTotal ? endTotal - startTotal : endTotal + 24 * 60 - startTotal;
+};
 
 const isAllowedRiwayatFilter = (value: string): value is (typeof RIWAYAT_FILTER_OPTIONS)[number] =>
   RIWAYAT_FILTER_OPTIONS.includes(value as (typeof RIWAYAT_FILTER_OPTIONS)[number]);
@@ -406,10 +454,15 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const [mealHistoryEntries, setMealHistoryEntries] = useState<MealHistoryEntry[]>([]);
   const [mealPanel, setMealPanel] = useState("");
   const [mealSavedAt, setMealSavedAt] = useState("");
+  const [sleepSavedAt, setSleepSavedAt] = useState("");
   const [mealDraft, setMealDraft] = useState({
     mealType: "Sarapan",
     foodKey: "nasi_putih",
     time: "07:30",
+  });
+  const [sleepDraft, setSleepDraft] = useState({
+    bedtime: "22:30",
+    wakeTime: "06:00",
   });
   const [historyFilter, setHistoryFilter] = useState("Semua");
   const [reminderTab, setReminderTab] = useState("Semua");
@@ -621,14 +674,18 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const heartRate = Number(manualHeartRate.trim()) || 0;
   const steps = effectiveLatest?.steps ?? 0;
   const bloodPressure = displayedSystolic && displayedDiastolic ? `${displayedSystolic}/${displayedDiastolic}` : "0/0";
-  const sleepHours = 0;
+  const latestSleepEvent = historyEventDocs.find((entry) => entry.dataType === "Tidur") || null;
+  const sleepMinutes = latestSleepEvent ? parseSleepDurationMinutes(latestSleepEvent.value) : 0;
+  const sleepHours = sleepMinutes > 0 ? Number((sleepMinutes / 60).toFixed(1)) : 0;
+  const sleepDurationLabel = formatSleepDurationLabel(sleepMinutes);
+  const sleepRecordedAt = latestSleepEvent ? formatLocalDateTime(latestSleepEvent.occurredAt) : "";
 
   const hasHeight = height > 0;
   const hasWeight = weight > 0;
   const hasHeartRate = heartRate > 0;
   const hasSteps = steps > 0;
   const hasBloodPressure = bloodPressure !== "0/0";
-  const hasSleep = sleepHours > 0;
+  const hasSleep = sleepMinutes > 0;
   const hasMealData = mealHistoryEntries.length > 0 || waterGlasses > 0 || mealNote.trim().length > 0;
   const hasLiveActivity = activitySession.steps > 0 || activitySession.durationSec > 0;
 
@@ -1164,6 +1221,11 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     .slice(0, 4)
     .map((entry) => `${formatLocalDateTime(entry.occurredAt)}: ${entry.dataType} ${entry.value}`)
     .join(" | ");
+  const recentSleepHistorySummary = historyEventDocs
+    .filter((entry) => entry.dataType === "Tidur")
+    .slice(0, 4)
+    .map((entry) => `${formatLocalDateTime(entry.occurredAt)}: Tidur ${entry.value}${entry.note && entry.note !== "-" ? ` • ${entry.note}` : ""}`)
+    .join(" | ");
   const recentTrendSummary = (() => {
     const latestRecord = measurementHistoryDb[0];
     const previousRecord = measurementHistoryDb[1];
@@ -1255,8 +1317,8 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       },
       {
         label: "Pola tidur",
-        score: sleepHours > 0 ? 45 : 0,
-        note: sleepHours > 0 ? `${sleepHours} jam tidur` : "",
+        score: sleepHours > 0 && sleepHours < 6 ? 65 : sleepHours > 0 && sleepHours > 9 ? 55 : 0,
+        note: sleepHours > 0 ? `${sleepDurationLabel}${sleepHours < 6 ? ", masih kurang" : sleepHours > 9 ? ", terlalu lama" : ", cukup"}` : "",
       },
     ]
       .filter((item) => item.score > 0)
@@ -1287,8 +1349,8 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     mealSummary: educationMealSummary,
     activitySummary: educationActivitySummary,
     hydrationSummary: educationHydrationSummary,
-    sleepSummary: sleepHours > 0 ? `${sleepHours} jam tidur` : "",
-    recentHistorySummary: [recentTrendSummary, recentMeasurementHistorySummary, recentActivityHistorySummary, recentNutritionHistorySummary]
+    sleepSummary: sleepHours > 0 ? `${sleepDurationLabel}${latestSleepEvent?.note && latestSleepEvent.note !== "-" ? ` • ${latestSleepEvent.note}` : ""}` : "",
+    recentHistorySummary: [recentTrendSummary, recentMeasurementHistorySummary, recentActivityHistorySummary, recentNutritionHistorySummary, recentSleepHistorySummary]
       .filter((item) => item.trim() !== "")
       .join(" | "),
     recentTrendSummary,
@@ -3343,6 +3405,34 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     notify(`${food.name} berhasil ditambahkan ke pola makan hari ini.`);
   };
 
+  const saveSleepTracking = async () => {
+    const durationMinutes = calculateSleepDurationMinutes(sleepDraft.bedtime, sleepDraft.wakeTime);
+    if (durationMinutes <= 0) {
+      notify("Isi jam tidur dan jam bangun dengan benar.");
+      return;
+    }
+
+    const sleepLabel = formatSleepDurationLabel(durationMinutes);
+    const sleepRange = `${sleepDraft.bedtime} - ${sleepDraft.wakeTime}`;
+    const nowIso = new Date().toISOString();
+
+    setSleepSavedAt(formatLocalDateTime(new Date()));
+    await appendHistoryEvents([
+      {
+        occurredAt: nowIso,
+        dataType: "Tidur",
+        value: sleepLabel,
+        category: "Tidur",
+        status: "Tercatat",
+        note: `Tidur malam ${sleepRange}`,
+        actionLabel: "Lihat",
+        source: "sleep",
+      },
+    ]);
+    notify(`Durasi tidur ${sleepLabel} berhasil disimpan.`);
+    setMealPanel("");
+  };
+
   const saveWaterTracking = async () => {
     if (waterGlasses <= 0) {
       notify("Tambahkan jumlah air minum terlebih dahulu.");
@@ -3914,6 +4004,8 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                           ? "Pilih contoh makanan untuk membantu mengisi 6 parameter pola makan hari ini."
                           : mealPanel === "Asupan Air"
                             ? "Atur jumlah gelas air harian agar target hidrasi tetap tercapai."
+                            : mealPanel === "Pola Tidur"
+                              ? "Catat jam tidur dan jam bangun untuk menghitung durasi tidur yang benar."
                             : "Tulis catatan singkat pola makan Anda hari ini."}
                       </p>
                     </div>
@@ -4128,6 +4220,60 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                       <div className="grid gap-3 sm:grid-cols-2">
                         <button type="button" onClick={saveWaterTracking} className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-black text-white hover:bg-emerald-700">Simpan Asupan Air</button>
                         <button type="button" onClick={() => { setWaterGlasses(0); notify("Asupan air direset."); }} className="rounded-xl border border-[#dfe6ea] bg-white px-5 py-3 text-sm font-black text-slate-700 hover:bg-slate-50">Reset</button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {mealPanel === "Pola Tidur" ? (
+                    <div className="space-y-4">
+                      <div className="rounded-2xl border border-[#e4eaee] bg-slate-50 p-4">
+                        <p className="text-sm font-black text-slate-900">Cara Catat Tidur</p>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                          {[
+                            ["1", "Isi jam tidur", "Masukkan waktu Anda mulai tidur malam."],
+                            ["2", "Isi jam bangun", "Masukkan waktu Anda bangun pagi."],
+                            ["3", "Simpan durasi", "Sistem akan menghitung total tidur otomatis."],
+                          ].map((step) => (
+                            <div key={step[1]} className="rounded-xl bg-white p-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
+                              <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-sm font-black text-emerald-700">{step[0]}</div>
+                              <p className="text-sm font-black text-slate-900">{step[1]}</p>
+                              <p className="mt-1 text-xs leading-5 text-slate-600">{step[2]}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 rounded-2xl border border-[#e4eaee] bg-white p-4 sm:grid-cols-2">
+                        <label className="text-sm font-bold text-slate-700">
+                          Jam Tidur
+                          <input
+                            type="time"
+                            value={sleepDraft.bedtime}
+                            onChange={(event) => setSleepDraft((current) => ({ ...current, bedtime: event.target.value }))}
+                            className="mt-1 w-full rounded-xl border border-[#dfe6ea] px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                          />
+                        </label>
+                        <label className="text-sm font-bold text-slate-700">
+                          Jam Bangun
+                          <input
+                            type="time"
+                            value={sleepDraft.wakeTime}
+                            onChange={(event) => setSleepDraft((current) => ({ ...current, wakeTime: event.target.value }))}
+                            className="mt-1 w-full rounded-xl border border-[#dfe6ea] px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Durasi Terdeteksi</p>
+                        <p className="mt-2 text-3xl font-black text-slate-900">{formatSleepDurationLabel(calculateSleepDurationMinutes(sleepDraft.bedtime, sleepDraft.wakeTime))}</p>
+                        <p className="mt-1 text-sm text-slate-600">Jika jam bangun lewat tengah malam, sistem tetap menghitung durasi dengan benar.</p>
+                        {sleepSavedAt ? <p className="mt-3 text-xs font-semibold text-emerald-700">Terakhir disimpan: {sleepSavedAt}</p> : null}
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <button type="button" onClick={saveSleepTracking} className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-black text-white hover:bg-emerald-700">Simpan Tidur</button>
+                        <button type="button" onClick={() => { setSleepDraft({ bedtime: "22:30", wakeTime: "06:00" }); notify("Form tidur dibersihkan."); }} className="rounded-xl border border-[#dfe6ea] bg-white px-5 py-3 text-sm font-black text-slate-700 hover:bg-slate-50">Reset</button>
                       </div>
                     </div>
                   ) : null}
@@ -4835,17 +4981,23 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                       <button type="button" onClick={() => setMealPanel("Input Pola Makan")} className="mt-3 w-full rounded-xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700">Input Pola Makan</button>
                     </article>
                     <div className="space-y-4">
-                      <article className="rounded-2xl border border-[#e4eaee] bg-white p-4">
-                        <h4 className="text-lg font-bold text-slate-900">Asupan Air</h4>
-                        <p className="mt-2 text-2xl font-black text-slate-900">{waterGlasses} / 8 <span className="text-sm font-semibold text-slate-500">gelas</span></p>
-                        <p className="text-sm text-slate-500">{Math.min(100, Math.round((waterGlasses / 8) * 100))}%</p>
-                        <button type="button" onClick={() => setMealPanel("Asupan Air")} className="mt-3 w-full rounded-xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700">Kelola Asupan Air</button>
-                      </article>
-                      <article className="rounded-2xl border border-[#e4eaee] bg-white p-4">
-                        <h4 className="text-lg font-bold text-slate-900">Catatan Harian</h4>
-                        <textarea className="mt-3 min-h-24 w-full resize-none rounded-xl border border-[#dfe6ea] px-3 py-2 text-sm" maxLength={200} placeholder="Bagaimana pola makan Anda hari ini?" value={mealNote} onChange={(event) => setMealNote(event.target.value)} />
-                        <p className="mt-1 text-right text-xs text-slate-500">{mealNote.length}/200</p>
-                        <button type="button" onClick={() => setMealPanel("Catatan Harian")} className="mt-2 w-full rounded-xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700">Buka Catatan Harian</button>
+                    <article className="rounded-2xl border border-[#e4eaee] bg-white p-4">
+                      <h4 className="text-lg font-bold text-slate-900">Asupan Air</h4>
+                      <p className="mt-2 text-2xl font-black text-slate-900">{waterGlasses} / 8 <span className="text-sm font-semibold text-slate-500">gelas</span></p>
+                      <p className="text-sm text-slate-500">{Math.min(100, Math.round((waterGlasses / 8) * 100))}%</p>
+                      <button type="button" onClick={() => setMealPanel("Asupan Air")} className="mt-3 w-full rounded-xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700">Kelola Asupan Air</button>
+                    </article>
+                    <article className="rounded-2xl border border-[#e4eaee] bg-white p-4">
+                      <h4 className="text-lg font-bold text-slate-900">Pola Tidur</h4>
+                      <p className="mt-2 text-2xl font-black text-slate-900">{hasSleep ? sleepDurationLabel : "Belum ada data"}</p>
+                      <p className="text-sm text-slate-500">{hasSleep ? (sleepRecordedAt || "Tidur terakhir tercatat") : "Catat jam tidur agar edukasi lebih akurat"}</p>
+                      <button type="button" onClick={() => setMealPanel("Pola Tidur")} className="mt-3 w-full rounded-xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700">Catat Tidur</button>
+                    </article>
+                    <article className="rounded-2xl border border-[#e4eaee] bg-white p-4">
+                      <h4 className="text-lg font-bold text-slate-900">Catatan Harian</h4>
+                      <textarea className="mt-3 min-h-24 w-full resize-none rounded-xl border border-[#dfe6ea] px-3 py-2 text-sm" maxLength={200} placeholder="Bagaimana pola makan Anda hari ini?" value={mealNote} onChange={(event) => setMealNote(event.target.value)} />
+                      <p className="mt-1 text-right text-xs text-slate-500">{mealNote.length}/200</p>
+                      <button type="button" onClick={() => setMealPanel("Catatan Harian")} className="mt-2 w-full rounded-xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700">Buka Catatan Harian</button>
                       </article>
                     </div>
                   </section>
