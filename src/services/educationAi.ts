@@ -225,6 +225,8 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
   const recentBloodPressureSummary = data.recentBloodPressureSummary?.trim() || "";
   const recentStepSummary = data.recentStepSummary?.trim() || "";
   const recentHydrationSummary = data.recentHydrationSummary?.trim() || "";
+  const recentWeightBmiSummary = data.recentWeightBmiSummary?.trim() || "";
+  const recentSleepComparisonSummary = data.recentSleepComparisonSummary?.trim() || "";
   const prioritySummary = data.prioritySummary?.trim() || "";
   const bloodPressureText = normalizeText(data.bloodPressure);
   const heartRateText = data.heartRate && data.heartRate > 0 ? `${formatNumber(data.heartRate)} bpm` : "-";
@@ -250,6 +252,8 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
         recentBloodPressureSummary ? `Riwayat tekanan darah: ${recentBloodPressureSummary}` : "",
         recentStepSummary ? `Riwayat langkah: ${recentStepSummary}` : "",
         recentHydrationSummary ? `Riwayat hidrasi: ${recentHydrationSummary}` : "",
+        recentWeightBmiSummary ? `Perbandingan berat/BMI: ${recentWeightBmiSummary}` : "",
+        recentSleepComparisonSummary ? `Perbandingan tidur: ${recentSleepComparisonSummary}` : "",
         sleepSummary ? `Pola tidur: ${sleepSummary}` : "",
         sleepHistorySummary ? `Riwayat tidur: ${sleepHistorySummary}` : "",
         prioritySummary ? `Prioritas: ${prioritySummary}` : "",
@@ -268,6 +272,8 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
       recentBloodPressureSummary,
       recentStepSummary,
       recentHydrationSummary,
+      recentWeightBmiSummary,
+      recentSleepComparisonSummary,
       bloodPressure: bloodPressureText,
       bloodPressureStatus: analysis.bloodPressureStatus,
       heartRate: heartRateText,
@@ -285,6 +291,8 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
     recentBloodPressureSummary ? `tekanan darah riwayat ${recentBloodPressureSummary}` : "",
     recentStepSummary ? `langkah riwayat ${recentStepSummary}` : "",
     recentHydrationSummary ? `hidrasi riwayat ${recentHydrationSummary}` : "",
+    recentWeightBmiSummary ? `berat bmi riwayat ${recentWeightBmiSummary}` : "",
+    recentSleepComparisonSummary ? `tidur riwayat ${recentSleepComparisonSummary}` : "",
     `tekanan darah ${analysis.bloodPressureStatus.toLowerCase()}`,
     `detak jantung ${analysis.heartRateStatus.toLowerCase()}`,
   ]),
@@ -326,6 +334,8 @@ Konteks kesehatan:
   - Riwayat tekanan darah: ${healthContext.educationContext.recentBloodPressureSummary || "-"}
   - Riwayat langkah: ${healthContext.educationContext.recentStepSummary || "-"}
   - Riwayat hidrasi: ${healthContext.educationContext.recentHydrationSummary || "-"}
+  - Perbandingan berat/BMI: ${healthContext.educationContext.recentWeightBmiSummary || "-"}
+  - Perbandingan tidur: ${healthContext.educationContext.recentSleepComparisonSummary || "-"}
   - Pola tidur: ${healthContext.educationContext.sleepSummary || "-"}
   - Durasi tidur: ${healthContext.educationContext.sleepHours || "-"}
   - Status tidur: ${healthContext.educationContext.sleepStatus || "-"}
@@ -341,6 +351,8 @@ Analisis cepat:
 - Ringkasan tekanan darah riwayat: ${healthContext.educationContext.recentBloodPressureSummary || "-"}
 - Ringkasan langkah riwayat: ${healthContext.educationContext.recentStepSummary || "-"}
 - Ringkasan hidrasi riwayat: ${healthContext.educationContext.recentHydrationSummary || "-"}
+- Ringkasan berat/BMI riwayat: ${healthContext.educationContext.recentWeightBmiSummary || "-"}
+- Ringkasan tidur riwayat: ${healthContext.educationContext.recentSleepComparisonSummary || "-"}
 - Riwayat terbaru: ${healthContext.educationContext.recentHistorySummary || "-"}
 - Tren terbaru: ${healthContext.educationContext.recentTrendSummary || "-"}
 - Riwayat pengukuran: ${healthContext.educationContext.recentMeasurementSummary || "-"}
@@ -358,6 +370,7 @@ Aturan jawaban:
 - Bandingkan data terbaru dengan riwayat sebelumnya bila ada perubahan yang terlihat.
 - Jadikan riwayat data sebagai dasar utama, bukan cuma angka terakhir.
 - Mulai dari prioritas parameter yang paling berisiko atau paling berubah.
+- Kalau pertanyaan umum seperti "bagaimana kondisi saya hari ini", prioritaskan perubahan hari ini vs kemarin dan mulai dari parameter yang paling menonjol berubah.
 - Kalau pola tidur tersedia, sebutkan status tidur dan hubungkan dengan energi, aktivitas, atau parameter lain bila relevan.
 - Kalau data kurang, bilang jujur dan minta data yang dibutuhkan dengan lembut.
 - Jika ada rujukan web, tampilkan hanya sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.

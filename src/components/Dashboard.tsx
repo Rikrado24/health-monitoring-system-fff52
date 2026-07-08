@@ -1282,6 +1282,71 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
 
     return parts.join("; ");
   })();
+  const recentWeightBmiSummary = (() => {
+    const records = measurementHistoryDb
+      .filter((entry) => Number(entry.berat_badan) > 0 || Number(entry.bmi) > 0)
+      .slice(0, 2);
+    if (records.length === 0) return "";
+
+    const latestRecord = records[0];
+    const latestWeight = Number(latestRecord.berat_badan) || 0;
+    const latestBmi = Number(latestRecord.bmi) > 0
+      ? Number(latestRecord.bmi)
+      : Number(latestRecord.tinggi_badan) > 0 && Number(latestRecord.berat_badan) > 0
+        ? Number((Number(latestRecord.berat_badan) / Math.pow(Number(latestRecord.tinggi_badan) / 100, 2)).toFixed(1))
+        : 0;
+    const parts = [
+      `Pengukuran terakhir ${formatLocalDateTime(latestRecord.tanggal_pengukuran)}`,
+      latestWeight > 0 ? `berat ${latestWeight.toLocaleString("id-ID")} kg` : "",
+      latestBmi > 0 ? `BMI ${latestBmi.toFixed(1)}` : "",
+    ].filter(Boolean);
+
+    if (records[1]) {
+      const previousRecord = records[1];
+      const previousWeight = Number(previousRecord.berat_badan) || 0;
+      const previousBmi = Number(previousRecord.bmi) > 0
+        ? Number(previousRecord.bmi)
+        : Number(previousRecord.tinggi_badan) > 0 && Number(previousRecord.berat_badan) > 0
+          ? Number((Number(previousRecord.berat_badan) / Math.pow(Number(previousRecord.tinggi_badan) / 100, 2)).toFixed(1))
+          : 0;
+      if (latestWeight > 0 && previousWeight > 0 && latestWeight !== previousWeight) {
+        parts.push(`berat ${latestWeight > previousWeight ? "naik" : "turun"} ${Math.abs(latestWeight - previousWeight).toFixed(1)} kg dari pengukuran sebelumnya`);
+      }
+      if (latestBmi > 0 && previousBmi > 0 && latestBmi !== previousBmi) {
+        parts.push(`BMI ${latestBmi > previousBmi ? "naik" : "turun"} ${Math.abs(latestBmi - previousBmi).toFixed(1)}`);
+      }
+    }
+
+    return parts.join("; ");
+  })();
+  const recentSleepComparisonSummary = (() => {
+    const sleepRecords = historyEventDocs.filter((entry) => entry.dataType === "Tidur").slice(0, 2);
+    if (sleepRecords.length === 0) return "";
+
+    const latestSleep = sleepRecords[0];
+    const latestMinutes = parseSleepDurationMinutes(latestSleep.value);
+    if (latestMinutes <= 0) return "";
+    const latestLabel = formatSleepDurationLabel(latestMinutes);
+    const parts = [`Tidur terakhir ${latestLabel}`];
+
+    if (sleepRecords[1]) {
+      const previousSleep = sleepRecords[1];
+      const previousMinutes = parseSleepDurationMinutes(previousSleep.value);
+      if (previousMinutes > 0 && previousMinutes !== latestMinutes) {
+        const deltaMinutes = Math.abs(latestMinutes - previousMinutes);
+        const deltaLabel = deltaMinutes >= 60
+          ? `${Math.floor(deltaMinutes / 60)} jam ${String(deltaMinutes % 60).padStart(2, "0")} menit`
+          : `${deltaMinutes} menit`;
+        parts.push(`dibanding kemarin ${latestMinutes > previousMinutes ? "lebih lama" : "lebih singkat"} ${deltaLabel}`);
+      }
+    }
+
+    if (latestSleep.note && latestSleep.note !== "-") {
+      parts.push(latestSleep.note);
+    }
+
+    return parts.join("; ");
+  })();
   const mealCaloriesForBot = historyMealCaloriesTotal > 0 ? historyMealCaloriesTotal : mealCaloriesDisplay;
   const waterGlassesForBot = historyHydrationTotal > 0 ? historyHydrationTotal : waterGlasses;
   const educationMealSummary = historyMealSummary || (hasMealData
@@ -1414,11 +1479,13 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     recentBloodPressureSummary,
     recentStepSummary,
     recentHydrationSummary,
+    recentWeightBmiSummary,
+    recentSleepComparisonSummary,
     sleepSummary: sleepHours > 0 ? `${sleepDurationLabel}${latestSleepEvent?.note && latestSleepEvent.note !== "-" ? ` • ${latestSleepEvent.note}` : ""}` : "",
     sleepHours,
     sleepStatus,
     sleepHistorySummary: recentSleepHistorySummary,
-    recentHistorySummary: [recentTrendSummary, recentBloodPressureSummary, recentStepSummary, recentHydrationSummary, recentMeasurementHistorySummary, recentActivityHistorySummary, recentNutritionHistorySummary, recentSleepHistorySummary]
+    recentHistorySummary: [recentTrendSummary, recentWeightBmiSummary, recentSleepComparisonSummary, recentBloodPressureSummary, recentStepSummary, recentHydrationSummary, recentMeasurementHistorySummary, recentActivityHistorySummary, recentNutritionHistorySummary, recentSleepHistorySummary]
       .filter((item) => item.trim() !== "")
       .join(" | "),
     recentTrendSummary,

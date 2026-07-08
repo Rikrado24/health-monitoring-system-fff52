@@ -310,6 +310,12 @@ const collectDataLines = (context: EducationContext) => {
     isMeaningfulValue(context.educationContext.recentHydrationSummary)
       ? `Riwayat hidrasi ${context.educationContext.recentHydrationSummary}`
       : "",
+    isMeaningfulValue(context.educationContext.recentWeightBmiSummary)
+      ? `Perbandingan berat/BMI ${context.educationContext.recentWeightBmiSummary}`
+      : "",
+    isMeaningfulValue(context.educationContext.recentSleepComparisonSummary)
+      ? `Perbandingan tidur ${context.educationContext.recentSleepComparisonSummary}`
+      : "",
     isMeaningfulValue(context.educationContext.mealSummary) ? `Pola makan ${context.educationContext.mealSummary}` : "",
     isMeaningfulValue(context.educationContext.sleepSummary)
       ? `Pola tidur ${context.educationContext.sleepSummary} (${context.educationContext.sleepStatus || "Belum ada data"})`
@@ -330,6 +336,8 @@ const collectMissingData = (context: EducationContext) => {
     !isMeaningfulValue(context.educationContext.recentBloodPressureSummary) ? "riwayat tekanan darah" : "",
     !isMeaningfulValue(context.educationContext.recentStepSummary) ? "riwayat langkah" : "",
     !isMeaningfulValue(context.educationContext.recentHydrationSummary) ? "riwayat hidrasi" : "",
+    !isMeaningfulValue(context.educationContext.recentWeightBmiSummary) ? "perbandingan berat dan BMI" : "",
+    !isMeaningfulValue(context.educationContext.recentSleepComparisonSummary) ? "perbandingan tidur" : "",
     !isMeaningfulValue(context.educationContext.mealSummary) ? "pola makan" : "",
     !isMeaningfulValue(context.educationContext.sleepSummary) ? "pola tidur" : "",
     !isMeaningfulValue(context.educationContext.sleepHistorySummary) ? "riwayat tidur" : "",
@@ -339,6 +347,8 @@ const collectMissingData = (context: EducationContext) => {
 const collectHistoryHighlights = (context: EducationContext) =>
   [
     context.educationContext.recentTrendSummary,
+    context.educationContext.recentWeightBmiSummary,
+    context.educationContext.recentSleepComparisonSummary,
     context.educationContext.recentHistorySummary,
     context.educationContext.recentMeasurementSummary,
     context.educationContext.recentActivitySummary,
@@ -411,9 +421,12 @@ const buildContextualFallbackReply = (input: Omit<GenerateEducationReplyInput, "
   const historyHighlights = collectHistoryHighlights(input.context);
   const dataSummary = dataLines.length > 0 ? dataLines.slice(0, 4).join(", ") : "Data kesehatan belum cukup lengkap";
   const historySummary = historyHighlights.length > 0 ? historyHighlights.slice(0, 3).join(" | ") : "Belum ada riwayat tambahan";
+  const mentionsToday = /hari ini|today|sekarang/i.test(input.question);
   const opening =
     topic.topic === "umum"
-      ? `Berdasarkan data terbaru dan riwayat yang masuk, kondisi Anda ${analysis.overallStatus.toLowerCase()}.`
+      ? mentionsToday
+        ? `Berdasarkan data hari ini dan perbandingan dengan riwayat terakhir, kondisi Anda ${analysis.overallStatus.toLowerCase()}.`
+        : `Berdasarkan data terbaru dan riwayat yang masuk, kondisi Anda ${analysis.overallStatus.toLowerCase()}.`
       : `Saya tangkap, ini terkait ${topic.label.toLowerCase()} dan saya lihat dari riwayat datanya kondisi Anda ${analysis.overallStatus.toLowerCase()}.`;
   const guidance = compactText(buildGuidanceByTopic(topic, input.context));
   const extras = analysis.overallRecommendation ? compactText(analysis.overallRecommendation) : "";
