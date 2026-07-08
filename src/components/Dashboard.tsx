@@ -632,7 +632,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     "Minum Obat": true,
     "Tidur Lebih Awal": true,
   });
-  const initialName = userDisplayName?.trim() || "Andi Setiawan";
+  const initialName = userDisplayName?.trim() || "Pengguna";
   const profileStorageKey = getProfileStorageKey(userUid || "", userEmail || "");
   const defaultProfile = buildDefaultEditableProfile({ initialName, userEmail: userEmail || "", latest: latest ?? null });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -675,6 +675,16 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const steps = effectiveLatest?.steps ?? 0;
   const bloodPressure = displayedSystolic && displayedDiastolic ? `${displayedSystolic}/${displayedDiastolic}` : "0/0";
   const latestSleepEvent = historyEventDocs.find((entry) => entry.dataType === "Tidur") || null;
+  const mealHistoryEventDocs = historyEventDocs.filter((entry) => entry.dataType === "Pola Makan" && entry.source === "meal");
+  const hydrationHistoryEventDocs = historyEventDocs.filter((entry) => entry.dataType === "Hidrasi" && entry.source === "hydration");
+  const parseHistoryCalories = (value: string) => {
+    const match = String(value || "").match(/(\d+(?:[.,]\d+)?)/);
+    return match ? Number(match[1].replace(",", ".")) || 0 : 0;
+  };
+  const historyMealCaloriesTotal = mealHistoryEventDocs.reduce((total, entry) => total + parseHistoryCalories(entry.value), 0);
+  const historyMealSummary = historyMealCaloriesTotal > 0 ? `${historyMealCaloriesTotal.toLocaleString("id-ID")} kkal dari ${mealHistoryEventDocs.length} catatan riwayat` : "";
+  const historyHydrationTotal = hydrationHistoryEventDocs.reduce((total, entry) => total + parseHistoryCalories(entry.value), 0);
+  const historyHydrationSummary = historyHydrationTotal > 0 ? `${historyHydrationTotal.toLocaleString("id-ID")} gelas air dari riwayat` : "";
   const sleepMinutes = latestSleepEvent ? parseSleepDurationMinutes(latestSleepEvent.value) : 0;
   const sleepHours = sleepMinutes > 0 ? Number((sleepMinutes / 60).toFixed(1)) : 0;
   const sleepDurationLabel = formatSleepDurationLabel(sleepMinutes);
@@ -686,7 +696,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const hasSteps = steps > 0;
   const hasBloodPressure = bloodPressure !== "0/0";
   const hasSleep = sleepMinutes > 0;
-  const hasMealData = mealHistoryEntries.length > 0 || waterGlasses > 0 || mealNote.trim().length > 0;
+  const hasMealData = mealHistoryEntries.length > 0 || mealNote.trim().length > 0 || historyMealCaloriesTotal > 0 || historyHydrationTotal > 0;
   const hasLiveActivity = activitySession.steps > 0 || activitySession.durationSec > 0;
 
   const formatDuration = (seconds: number) => {
@@ -852,12 +862,6 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const formatActivityFinishedAt = (isoString: string) => {
     return formatLocalDateTime(isoString, isoString || "-");
   };
-  const formatSampleDateTime = (daysAgo: number, hour: number, minute: number) => {
-    const sample = new Date(deviceNow);
-    sample.setDate(sample.getDate() - daysAgo);
-    sample.setHours(hour, minute, 0, 0);
-    return formatLocalDateTime(sample);
-  };
   const getActivityIntensityLevel = (session: { motion_label: string; speed_avg_mps: number; source: "gps" | "fallback" }) => {
     const label = String(session.motion_label || "").toLowerCase();
     const speed = Number(session.speed_avg_mps) || 0;
@@ -865,22 +869,10 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     if (label.includes("sepeda") || speed >= 1.35 || session.source === "gps") return "sedang" as const;
     return "ringan" as const;
   };
-
-  const activityRows = [
-    ["🚶", "Jalan Pagi", formatSampleDateTime(0, 7, 30), hasAnyData ? "5.2 km" : "-", hasAnyData ? "45 menit" : "-", hasAnyData ? "312 kcal" : "-"],
-    ["🚴", "Bersepeda", formatSampleDateTime(1, 16, 15), hasAnyData ? "12.4 km" : "-", hasAnyData ? "1j 08m" : "-", hasAnyData ? "560 kcal" : "-"],
-    ["🏃", "Jalan Santai", formatSampleDateTime(2, 8, 45), hasAnyData ? "3.1 km" : "-", hasAnyData ? "30 menit" : "-", hasAnyData ? "150 kcal" : "-"],
-  ];
-
-  const reminderRows = [
-    ["💧", "Minum Air", "Setiap 2 jam", hasAnyData ? "10:00" : "-"],
-    ["🏃", "Olahraga Ringan", "Setiap hari", hasAnyData ? "17:00" : "-"],
-    ["🌙", "Tidur Lebih Awal", "Setiap hari", hasAnyData ? "22:00" : "-"],
-  ];
   const runningActivityRow = isActivityRunning
     ? [["[LIVE]", `${currentMotionLabel} (Sedang Berjalan)`, activitySession.startedAt || "-", `${activitySession.distanceKm.toFixed(2)} km`, formatDuration(activitySession.durationSec), `${Math.round(activitySession.calories)} kcal`]]
     : [];
-  const activityRowsLive = [...runningActivityRow, ...(activityHistory.length > 0 ? activityHistory : activityRows)];
+  const activityRowsLive = [...runningActivityRow, ...activityHistory];
   const activityDataSessions = activitySessionDocs.filter(
     (session) =>
       Number(session.langkah) > 0 ||
@@ -1123,14 +1115,6 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     ["fa-clock", "Akan Datang", String(upcomingReminders.length), upcomingReminders.length > 0 ? "Akan berbunyi" : "Tidak ada jadwal", "amber"],
     ["fa-check", "Selesai Hari Ini", String(reminderLogs.filter((log) => log.status === "Selesai").length), reminderLogs.length > 0 ? "Pengingat selesai" : "Belum ada selesai", "violet"],
   ];
-  const staticHistoryRows = [
-    [formatSampleDateTime(0, 8, 30), "Tekanan Darah", hasBloodPressure ? `${bloodPressure} mmHg` : "-", "Tekanan", bpStatus, "Diastolik 80", "Lihat"],
-    [formatSampleDateTime(0, 8, 30), "Detak Jantung", hasHeartRate ? `${heartRate} bpm` : "-", "Jantung", hrStatus, "Sebelum aktivitas", "Lihat"],
-    [formatSampleDateTime(0, 8, 30), "Berat Badan", hasWeight ? `${weight} kg` : "-", "Berat", hasWeight ? "Normal" : "-", "Pagi hari", "Lihat"],
-    [formatSampleDateTime(0, 8, 30), "Tinggi Badan", hasHeight ? `${height} cm` : "-", "Tinggi", hasHeight ? "Normal" : "-", "Profil", "Lihat"],
-    [formatSampleDateTime(0, 8, 30), "Aktivitas", hasSteps ? `${steps.toLocaleString("id-ID")} langkah` : "-", "Aktivitas", hasSteps ? "Baik" : "-", "Target 10.000", "Lihat"],
-    [formatSampleDateTime(0, 8, 30), "Pola Makan", hasMealData ? `${totalMealCalories.toLocaleString("id-ID")} kkal` : "-", "Nutrisi", hasMealData ? "Baik" : "-", "Catatan harian", "Lihat"],
-  ];
   const storedHistoryRows = measurementHistoryDb.flatMap((entry) => {
     const timestamp = formatLocalDateTime(entry.tanggal_pengukuran);
     const sourceLabel = entry.sumber_data === "esp32_s3" ? "ESP32-S3 UNO" : entry.sumber_data === "web_manual" ? "Web Manual" : entry.sumber_data === "web_sync" ? "Sinkronisasi Web" : "Aplikasi";
@@ -1178,11 +1162,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       entry.note || entry.source,
       entry.actionLabel || "Lihat",
     ]);
-  const educationMealSummary = hasMealData
-    ? `${mealCaloriesDisplay.toLocaleString("id-ID")} kkal, ${carbsDisplay.toLocaleString("id-ID")} g karbohidrat, ${proteinDisplay.toLocaleString("id-ID")} g protein, ${fatDisplay.toLocaleString("id-ID")} g lemak, ${fiberDisplay.toLocaleString("id-ID")} g serat`
-    : "";
   const educationActivitySummary = totalActivitySteps > 0 ? `${totalActivitySteps.toLocaleString("id-ID")} langkah hari ini` : "";
-  const educationHydrationSummary = waterGlasses > 0 ? `${waterGlasses} gelas air` : "";
   const recentMeasurementHistorySummary = measurementHistoryDb
     .slice(0, 4)
     .map((entry) => {
@@ -1226,6 +1206,12 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     .slice(0, 4)
     .map((entry) => `${formatLocalDateTime(entry.occurredAt)}: Tidur ${entry.value}${entry.note && entry.note !== "-" ? ` • ${entry.note}` : ""}`)
     .join(" | ");
+  const mealCaloriesForBot = historyMealCaloriesTotal > 0 ? historyMealCaloriesTotal : mealCaloriesDisplay;
+  const waterGlassesForBot = historyHydrationTotal > 0 ? historyHydrationTotal : waterGlasses;
+  const educationMealSummary = historyMealSummary || (hasMealData
+    ? `${mealCaloriesDisplay.toLocaleString("id-ID")} kkal, ${carbsDisplay.toLocaleString("id-ID")} g karbohidrat, ${proteinDisplay.toLocaleString("id-ID")} g protein, ${fatDisplay.toLocaleString("id-ID")} g lemak, ${fiberDisplay.toLocaleString("id-ID")} g serat`
+    : "");
+  const educationHydrationSummary = historyHydrationSummary || (waterGlasses > 0 ? `${waterGlasses} gelas air` : "");
   const recentTrendSummary = (() => {
     const latestRecord = measurementHistoryDb[0];
     const previousRecord = measurementHistoryDb[1];
@@ -1312,8 +1298,8 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       },
       {
         label: "Hidrasi",
-        score: waterGlasses <= 0 ? 0 : waterGlasses < 7 ? 60 : 0,
-        note: waterGlasses <= 0 ? "belum ada data hidrasi" : waterGlasses < 7 ? `${waterGlasses} gelas, masih perlu ditambah` : "",
+        score: waterGlassesForBot <= 0 ? 0 : waterGlassesForBot < 7 ? 60 : 0,
+        note: waterGlassesForBot <= 0 ? "belum ada data hidrasi" : waterGlassesForBot < 7 ? `${waterGlassesForBot} gelas, masih perlu ditambah` : "",
       },
       {
         label: "Pola tidur",
@@ -1344,8 +1330,8 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     heartRate: hasHeartRate ? heartRate : 0,
     heartRateStatus: hrStatus,
     steps: totalActivitySteps,
-    waterGlasses,
-    mealCalories: mealCaloriesDisplay,
+    waterGlasses: waterGlassesForBot,
+    mealCalories: mealCaloriesForBot,
     mealSummary: educationMealSummary,
     activitySummary: educationActivitySummary,
     hydrationSummary: educationHydrationSummary,
@@ -4138,44 +4124,6 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/60 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-black text-emerald-800">Contoh Hari Ini Makan Apa Saja</p>
-                            <p className="mt-1 text-xs font-medium text-emerald-700">Gunakan tabel ini sebagai acuan cepat jika pengguna bingung memilih makanan yang paling mendekati.</p>
-                          </div>
-                          <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-emerald-700 shadow-sm">Contoh Referensi</span>
-                        </div>
-                        <div className="mt-3 overflow-x-auto">
-                          <table className="min-w-full text-left text-xs text-slate-700">
-                            <thead>
-                              <tr className="border-b border-emerald-100 text-slate-500">
-                                <th className="px-2 py-2 font-bold">Makanan</th>
-                                <th className="px-2 py-2 font-bold">Kalori</th>
-                                <th className="px-2 py-2 font-bold">Karbohidrat</th>
-                                <th className="px-2 py-2 font-bold">Protein</th>
-                                <th className="px-2 py-2 font-bold">Lemak</th>
-                                <th className="px-2 py-2 font-bold">Serat</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {[
-                                ["Nasi putih 100 gr", "130 kkal", "28 gr", "2,7 gr", "0,3 gr", "0,4 gr"],
-                                ["Dada ayam 100 gr", "165 kkal", "0 gr", "31 gr", "3,6 gr", "0 gr"],
-                                ["Pisang 100 gr", "89 kkal", "23 gr", "1,1 gr", "0,3 gr", "2,6 gr"],
-                                ["Brokoli 100 gr", "34 kkal", "7 gr", "2,8 gr", "0,4 gr", "2,6 gr"],
-                              ].map((row) => (
-                                <tr key={row[0]} className="border-b border-emerald-100/80 last:border-b-0">
-                                  {row.map((cell) => (
-                                    <td key={`${row[0]}-${cell}`} className="px-2 py-2">{cell}</td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-
                       <div className="rounded-2xl border border-[#e4eaee] p-4">
                         <p className="mb-1 text-sm font-black text-slate-900">Total Asupan 6 Parameter Hari Ini</p>
                         <p className="mb-3 text-xs font-medium text-slate-500">Bagian ini menghitung jumlah keseluruhan yang dimakan dan diminum dalam satu hari.</p>
@@ -4871,29 +4819,6 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                     </article>
                   </section>
 
-                  <section className="hidden mt-4 grid gap-4 lg:grid-cols-3">
-                    <article className="rounded-2xl border border-[#e4eaee] bg-white p-4 sm:p-5">
-                      <h4 className="mb-3 text-lg font-bold text-slate-900">Ringkasan Aktivitas</h4>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between"><span>Aktivitas Ringan</span><span className="font-semibold">{hasAnyData ? "45 mnt • 120 kkal" : "-"}</span></div>
-                        <div className="flex justify-between"><span>Aktivitas Sedang</span><span className="font-semibold">{hasAnyData ? "20 mnt • 110 kkal" : "-"}</span></div>
-                        <div className="flex justify-between"><span>Aktivitas Berat</span><span className="font-semibold">{hasAnyData ? "3 mnt • 82 kkal" : "-"}</span></div>
-                      </div>
-                    </article>
-                    <article className="rounded-2xl border border-[#e4eaee] bg-white p-5">
-                      <h4 className="mb-3 text-lg font-bold text-slate-900">Pencapaian Mingguan</h4>
-                      <p className="text-2xl font-black text-emerald-700">{hasAnyData ? "3 Hari Berturut-turut" : "-"}</p>
-                      <p className="text-sm text-slate-600">{hasAnyData ? "Pertahankan streak Anda!" : "-"}</p>
-                    </article>
-                    <article className="rounded-2xl border border-[#e4eaee] bg-white p-5">
-                      <h4 className="mb-3 text-lg font-bold text-slate-900">Rekomendasi Untuk Anda</h4>
-                      <div className="space-y-2 text-sm">
-                        <p className="rounded-xl bg-emerald-50 px-3 py-2">{hasAnyData ? "Tingkatkan langkah harian Anda minimal 10.000 langkah." : "-"}</p>
-                        <p className="rounded-xl bg-emerald-50 px-3 py-2">{hasAnyData ? "Coba berjalan kaki 15 menit setelah makan." : "-"}</p>
-                        <p className="rounded-xl bg-emerald-50 px-3 py-2">{hasAnyData ? "Minum air yang cukup sebelum dan sesudah aktivitas." : "-"}</p>
-                      </div>
-                    </article>
-                  </section>
                 </>
               ) : null}
 
@@ -5623,7 +5548,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                   <section className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_.9fr]">
                     <article className="rounded-2xl border border-[#e4eaee] bg-white p-5">
                       <h4 className="mb-3 text-lg font-bold text-slate-900">Aktivitas Terakhir</h4>
-                      {activityRows.map((row) => (
+                      {activityRowsLive.map((row) => (
                         <div key={row[1]} className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-[#eef2f6] py-3 text-sm sm:grid-cols-[1.4fr_auto_auto_auto]">
                           <div className="min-w-0"><p className="font-semibold">{row[0]} {row[1]}</p><p className="text-xs text-slate-500">{row[2]}</p></div>
                           <span className="font-semibold">{row[3]}</span>
@@ -5634,12 +5559,16 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                     </article>
                     <article className="rounded-2xl border border-[#e4eaee] bg-white p-5">
                       <h4 className="mb-3 text-lg font-bold text-slate-900">Pengingat Selanjutnya</h4>
-                      {reminderRows.map((row) => (
-                        <div key={row[1]} className="flex items-center justify-between border-b border-[#eef2f6] py-3 text-sm">
-                          <div><p className="font-semibold">{row[0]} {row[1]}</p><p className="text-xs text-slate-500">{row[2]}</p></div>
-                          <span className="font-bold">{row[3]}</span>
-                        </div>
-                      ))}
+                      {upcomingReminders.length > 0 ? (
+                        upcomingReminders.slice(0, 3).map((row) => (
+                          <div key={row.id} className="flex items-center justify-between border-b border-[#eef2f6] py-3 text-sm">
+                            <div><p className="font-semibold">{row.icon} {row.title}</p><p className="text-xs text-slate-500">{row.note}</p></div>
+                            <span className="font-bold">{row.time}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-lg bg-slate-50 px-3 py-2 text-center text-slate-500">Belum ada pengingat aktif.</div>
+                      )}
                     </article>
                   </section>
 

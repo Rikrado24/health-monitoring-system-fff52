@@ -82,7 +82,7 @@ const persistAuthProfile = ({
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [currentUid, setCurrentUid] = useState("");
-  const [currentName, setCurrentName] = useState(() => readStoredItem("sehatai_user_name", "Andi Setiawan") || "Andi Setiawan");
+  const [currentName, setCurrentName] = useState(() => readStoredItem("sehatai_user_name", "Pengguna") || "Pengguna");
   const [currentEmail, setCurrentEmail] = useState(() => readStoredItem("sehatai_user_email"));
   const [currentProfile, setCurrentProfile] = useState<AuthProfile | undefined>(undefined);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
@@ -151,7 +151,7 @@ export default function App() {
 
       setLoggedIn(false);
       setCurrentUid("");
-      setCurrentName("Andi Setiawan");
+      setCurrentName("Pengguna");
       setCurrentEmail("");
       setCurrentProfile(undefined);
       setNeedsProfileSetup(false);
@@ -163,7 +163,7 @@ export default function App() {
       if (user.email && !user.emailVerified) {
         setLoggedIn(false);
         setCurrentUid("");
-        setCurrentName("Andi Setiawan");
+        setCurrentName("Pengguna");
         setCurrentEmail("");
         setCurrentProfile(undefined);
         setNeedsProfileSetup(false);
@@ -197,7 +197,7 @@ export default function App() {
           }
           setLoggedIn(false);
           setCurrentUid("");
-          setCurrentName("Andi Setiawan");
+          setCurrentName("Pengguna");
           setCurrentEmail("");
           setCurrentProfile(undefined);
           setNeedsProfileSetup(false);
@@ -275,7 +275,7 @@ export default function App() {
             await signOut(auth);
             setLoggedIn(false);
             setCurrentUid("");
-            setCurrentName("Andi Setiawan");
+            setCurrentName("Pengguna");
             setCurrentEmail("");
             setCurrentProfile(undefined);
             setNeedsProfileSetup(false);
@@ -297,7 +297,7 @@ export default function App() {
           await signOut(auth);
           setLoggedIn(false);
           setCurrentUid("");
-          setCurrentName("Andi Setiawan");
+          setCurrentName("Pengguna");
           setCurrentEmail("");
           setCurrentProfile(undefined);
           setNeedsProfileSetup(false);
