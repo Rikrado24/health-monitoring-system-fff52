@@ -63,6 +63,33 @@ const analyzeHydration = (waterGlasses?: number): EducationHealthAnalysis["hydra
   return "Perlu ditambah";
 };
 
+const parseSleepHoursFromSummary = (value?: string) => {
+  const normalized = String(value || "").toLowerCase();
+  if (!normalized || normalized === "-") return 0;
+
+  const hoursMatch = normalized.match(/(\d+(?:[.,]\d+)?)\s*(?:jam|j|h)/);
+  if (hoursMatch) return Number(hoursMatch[1].replace(",", ".")) || 0;
+
+  const compactMatch = normalized.match(/(\d+)\s*j(?:\s*(\d+)\s*m)?/);
+  if (compactMatch) {
+    const hours = Number(compactMatch[1]) || 0;
+    const minutes = Number(compactMatch[2]) || 0;
+    return hours + minutes / 60;
+  }
+
+  const numberMatch = normalized.match(/(\d+(?:[.,]\d+)?)/);
+  return numberMatch ? Number(numberMatch[1].replace(",", ".")) || 0 : 0;
+};
+
+const analyzeSleep = (sleepHours?: number, sleepSummary?: string): EducationHealthAnalysis["sleepStatus"] => {
+  const normalizedHours =
+    Number.isFinite(sleepHours || 0) && (sleepHours || 0) > 0 ? Number(sleepHours) : parseSleepHoursFromSummary(sleepSummary);
+  if (!normalizedHours || normalizedHours <= 0) return "Belum ada data";
+  if (normalizedHours < 6) return "Kurang";
+  if (normalizedHours > 9) return "Berlebih";
+  return "Cukup";
+};
+
 const analyzeBloodPressure = (bloodPressure?: string, bloodPressureStatus?: string): EducationHealthAnalysis["bloodPressureStatus"] => {
   const normalizedStatus = normalizeText(bloodPressureStatus).toLowerCase();
   if (normalizedStatus.includes("rendah")) return "Rendah";
@@ -95,6 +122,7 @@ export function analyzeHealthParameters(data: EducationSourceData): EducationHea
   const bmiStatus = analyzeBmi(bmiValue);
   const activityStatus = analyzeActivity(data.steps);
   const hydrationStatus = analyzeHydration(data.waterGlasses);
+  const sleepStatus = analyzeSleep(data.sleepHours, data.sleepSummary);
   const bloodPressureStatus = analyzeBloodPressure(data.bloodPressure, data.bloodPressureStatus);
   const heartRateStatus = analyzeHeartRate(data.heartRate, data.heartRateStatus);
 
@@ -102,6 +130,7 @@ export function analyzeHealthParameters(data: EducationSourceData): EducationHea
     bmiStatus !== "Belum ada data" ? `BMI Anda termasuk ${bmiStatus.toLowerCase()}.` : "BMI belum bisa dihitung karena data tinggi dan berat belum lengkap.",
     activityStatus !== "Belum ada data" ? `Aktivitas harian Anda cenderung ${activityStatus.toLowerCase()}.` : "Data langkah harian belum cukup untuk dinilai.",
     hydrationStatus !== "Belum ada data" ? `Hidrasi Anda ${hydrationStatus.toLowerCase()}.` : "Data minum belum cukup untuk memberi saran hidrasi.",
+    sleepStatus !== "Belum ada data" ? `Pola tidur Anda ${sleepStatus.toLowerCase()}.` : "Data tidur belum cukup untuk dinilai.",
     bloodPressureStatus !== "Belum ada data" ? `Tekanan darah Anda terdeteksi ${bloodPressureStatus.toLowerCase()}.` : "Data tekanan darah belum tersedia.",
     heartRateStatus !== "Belum ada data" ? `Detak jantung Anda terdeteksi ${heartRateStatus.toLowerCase()}.` : "Data detak jantung belum tersedia.",
   ];
@@ -109,14 +138,14 @@ export function analyzeHealthParameters(data: EducationSourceData): EducationHea
   let overallStatus: EducationHealthAnalysis["overallStatus"] = "Baik";
   let overallRecommendation = "Pertahankan kebiasaan sehat, pantau data secara rutin, dan jaga pola hidup seimbang.";
 
-  const riskIndicators = [bmiStatus, activityStatus, hydrationStatus, bloodPressureStatus, heartRateStatus].filter(
+  const riskIndicators = [bmiStatus, activityStatus, hydrationStatus, sleepStatus, bloodPressureStatus, heartRateStatus].filter(
     (item) => item !== "Belum ada data"
   );
   if (riskIndicators.some((item) => item === "Obesitas" || item === "Tinggi" || item === "Rendah" || item === "Sangat kurang aktif" || item === "Perlu ditambah")) {
     overallStatus = "Perlu perhatian";
     overallRecommendation =
       "Coba perbaiki bagian yang paling menonjol dulu, misalnya gerak harian, minum air, atau porsi makan, lalu pantau ulang secara bertahap.";
-  } else if (riskIndicators.some((item) => item === "Overweight" || item === "Kurang aktif" || item === "Waspada")) {
+  } else if (riskIndicators.some((item) => item === "Overweight" || item === "Kurang aktif" || item === "Waspada" || item === "Kurang" || item === "Berlebih")) {
     overallStatus = "Perlu dipantau";
     overallRecommendation =
       "Ada beberapa hal yang sebaiknya dipantau lebih sering, jadi coba jaga pola makan, aktivitas, dan istirahat secara lebih konsisten.";
@@ -129,6 +158,7 @@ export function analyzeHealthParameters(data: EducationSourceData): EducationHea
     data.heartRate ? `detak jantung ${formatNumber(data.heartRate)} bpm (${heartRateStatus.toLowerCase()})` : "",
     data.steps ? `${formatNumber(data.steps)} langkah hari ini (${activityStatus.toLowerCase()})` : "",
     data.waterGlasses ? `${formatNumber(data.waterGlasses)} gelas air (${hydrationStatus.toLowerCase()})` : "",
+    sleepStatus !== "Belum ada data" ? `tidur ${formatNumber(Number(data.sleepHours || parseSleepHoursFromSummary(data.sleepSummary)), 1)} jam (${sleepStatus.toLowerCase()})` : "",
   ]);
 
   const hasPredictionInput =
@@ -171,6 +201,7 @@ export function analyzeHealthParameters(data: EducationSourceData): EducationHea
     bmiStatus,
     activityStatus,
     hydrationStatus,
+    sleepStatus,
     bloodPressureStatus,
     heartRateStatus,
     overallStatus,
@@ -188,12 +219,19 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
   const recentActivitySummary = data.recentActivitySummary?.trim() || "";
   const recentNutritionSummary = data.recentNutritionSummary?.trim() || "";
   const sleepSummary = data.sleepSummary?.trim() || "";
+  const sleepHours = Number(data.sleepHours || 0);
+  const sleepStatus = data.sleepStatus?.trim() || analyzeSleep(sleepHours, sleepSummary);
+  const sleepHistorySummary = data.sleepHistorySummary?.trim() || "";
+  const recentBloodPressureSummary = data.recentBloodPressureSummary?.trim() || "";
+  const recentStepSummary = data.recentStepSummary?.trim() || "";
+  const recentHydrationSummary = data.recentHydrationSummary?.trim() || "";
   const prioritySummary = data.prioritySummary?.trim() || "";
   const bloodPressureText = normalizeText(data.bloodPressure);
   const heartRateText = data.heartRate && data.heartRate > 0 ? `${formatNumber(data.heartRate)} bpm` : "-";
-  const activityText = data.activitySummary?.trim() || (data.steps && data.steps > 0 ? `${formatNumber(data.steps)} langkah hari ini` : "-");
+  const activityText = data.activitySummary?.trim() || recentStepSummary || (data.steps && data.steps > 0 ? `${formatNumber(data.steps)} langkah hari ini` : "-");
   const mealText = data.mealSummary?.trim() || (data.mealCalories && data.mealCalories > 0 ? `${formatNumber(data.mealCalories)} kkal` : "-");
-  const hydrationText = data.hydrationSummary?.trim() || (data.waterGlasses && data.waterGlasses > 0 ? `${formatNumber(data.waterGlasses)} gelas air` : "-");
+  const hydrationText = data.hydrationSummary?.trim() || recentHydrationSummary || (data.waterGlasses && data.waterGlasses > 0 ? `${formatNumber(data.waterGlasses)} gelas air` : "-");
+  const sleepText = sleepSummary || (sleepHours > 0 ? `${formatNumber(sleepHours, 1)} jam` : "-");
 
   return {
     educationContext: {
@@ -209,7 +247,11 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
         recentMeasurementSummary ? `Riwayat pengukuran: ${recentMeasurementSummary}` : "",
         recentActivitySummary ? `Riwayat aktivitas: ${recentActivitySummary}` : "",
         recentNutritionSummary ? `Riwayat nutrisi: ${recentNutritionSummary}` : "",
+        recentBloodPressureSummary ? `Riwayat tekanan darah: ${recentBloodPressureSummary}` : "",
+        recentStepSummary ? `Riwayat langkah: ${recentStepSummary}` : "",
+        recentHydrationSummary ? `Riwayat hidrasi: ${recentHydrationSummary}` : "",
         sleepSummary ? `Pola tidur: ${sleepSummary}` : "",
+        sleepHistorySummary ? `Riwayat tidur: ${sleepHistorySummary}` : "",
         prioritySummary ? `Prioritas: ${prioritySummary}` : "",
         `Status keseluruhan: ${analysis.overallStatus.toLowerCase()}.`,
       ]),
@@ -220,6 +262,12 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
       recentActivitySummary,
       recentNutritionSummary,
       sleepSummary,
+      sleepHours: sleepText,
+      sleepStatus,
+      sleepHistorySummary,
+      recentBloodPressureSummary,
+      recentStepSummary,
+      recentHydrationSummary,
       bloodPressure: bloodPressureText,
       bloodPressureStatus: analysis.bloodPressureStatus,
       heartRate: heartRateText,
@@ -231,11 +279,15 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
     analysis,
     promptSummary: formatSentence([
       `BMI ${bmiText} (${analysis.bmiStatus.toLowerCase()})`,
-      `aktivitas ${analysis.activityStatus.toLowerCase()}`,
-      `hidrasi ${analysis.hydrationStatus.toLowerCase()}`,
-      `tekanan darah ${analysis.bloodPressureStatus.toLowerCase()}`,
-      `detak jantung ${analysis.heartRateStatus.toLowerCase()}`,
-    ]),
+    `aktivitas ${analysis.activityStatus.toLowerCase()}`,
+    `hidrasi ${analysis.hydrationStatus.toLowerCase()}`,
+    `tidur ${sleepStatus.toLowerCase()}`,
+    recentBloodPressureSummary ? `tekanan darah riwayat ${recentBloodPressureSummary}` : "",
+    recentStepSummary ? `langkah riwayat ${recentStepSummary}` : "",
+    recentHydrationSummary ? `hidrasi riwayat ${recentHydrationSummary}` : "",
+    `tekanan darah ${analysis.bloodPressureStatus.toLowerCase()}`,
+    `detak jantung ${analysis.heartRateStatus.toLowerCase()}`,
+  ]),
   };
 }
 
@@ -271,19 +323,31 @@ Konteks kesehatan:
   - Aktivitas: ${healthContext.educationContext.activitySummary}
   - Pola makan: ${healthContext.educationContext.mealSummary}
   - Hidrasi: ${healthContext.educationContext.hydrationSummary}
+  - Riwayat tekanan darah: ${healthContext.educationContext.recentBloodPressureSummary || "-"}
+  - Riwayat langkah: ${healthContext.educationContext.recentStepSummary || "-"}
+  - Riwayat hidrasi: ${healthContext.educationContext.recentHydrationSummary || "-"}
+  - Pola tidur: ${healthContext.educationContext.sleepSummary || "-"}
+  - Durasi tidur: ${healthContext.educationContext.sleepHours || "-"}
+  - Status tidur: ${healthContext.educationContext.sleepStatus || "-"}
+  - Riwayat tidur: ${healthContext.educationContext.sleepHistorySummary || "-"}
 
 Analisis cepat:
 - BMI: ${healthContext.analysis.bmiValue > 0 ? healthContext.analysis.bmiValue.toFixed(1) : "-"}
 - Status BMI: ${healthContext.analysis.bmiStatus}
 - Status aktivitas: ${healthContext.analysis.activityStatus}
 - Status hidrasi: ${healthContext.analysis.hydrationStatus}
+- Status tidur: ${healthContext.analysis.sleepStatus}
 - Status keseluruhan: ${healthContext.analysis.overallStatus}
+- Ringkasan tekanan darah riwayat: ${healthContext.educationContext.recentBloodPressureSummary || "-"}
+- Ringkasan langkah riwayat: ${healthContext.educationContext.recentStepSummary || "-"}
+- Ringkasan hidrasi riwayat: ${healthContext.educationContext.recentHydrationSummary || "-"}
 - Riwayat terbaru: ${healthContext.educationContext.recentHistorySummary || "-"}
 - Tren terbaru: ${healthContext.educationContext.recentTrendSummary || "-"}
 - Riwayat pengukuran: ${healthContext.educationContext.recentMeasurementSummary || "-"}
 - Riwayat aktivitas: ${healthContext.educationContext.recentActivitySummary || "-"}
 - Riwayat nutrisi: ${healthContext.educationContext.recentNutritionSummary || "-"}
 - Pola tidur: ${healthContext.educationContext.sleepSummary || "-"}
+- Riwayat tidur: ${healthContext.educationContext.sleepHistorySummary || "-"}
 - Prioritas parameter: ${healthContext.educationContext.prioritySummary || "-"}
 
 Aturan jawaban:
@@ -294,7 +358,7 @@ Aturan jawaban:
 - Bandingkan data terbaru dengan riwayat sebelumnya bila ada perubahan yang terlihat.
 - Jadikan riwayat data sebagai dasar utama, bukan cuma angka terakhir.
 - Mulai dari prioritas parameter yang paling berisiko atau paling berubah.
-- Kalau pola tidur tersedia, ikut pertimbangkan karena tidur memengaruhi kondisi kesehatan umum.
+- Kalau pola tidur tersedia, sebutkan status tidur dan hubungkan dengan energi, aktivitas, atau parameter lain bila relevan.
 - Kalau data kurang, bilang jujur dan minta data yang dibutuhkan dengan lembut.
 - Jika ada rujukan web, tampilkan hanya sumber resmi seperti WHO, NIH, CDC, dan Mayo Clinic.
 - Kalau ada tanda bahaya, anjurkan ke tenaga medis segera.

@@ -3,6 +3,7 @@ export type EducationHealthAnalysis = {
   bmiStatus: "Kurang" | "Normal" | "Overweight" | "Obesitas" | "Belum ada data";
   activityStatus: "Aktif" | "Cukup aktif" | "Kurang aktif" | "Sangat kurang aktif" | "Belum ada data";
   hydrationStatus: "Cukup" | "Perlu ditambah" | "Belum ada data";
+  sleepStatus: "Cukup" | "Kurang" | "Berlebih" | "Belum ada data";
   bloodPressureStatus: "Rendah" | "Normal" | "Waspada" | "Tinggi" | "Belum ada data";
   heartRateStatus: "Rendah" | "Normal" | "Tinggi" | "Belum ada data";
   overallStatus: "Baik" | "Perlu dipantau" | "Perlu perhatian";
@@ -29,6 +30,12 @@ export type EducationSourceData = {
   activitySummary?: string;
   hydrationSummary?: string;
   sleepSummary?: string;
+  sleepHours?: number;
+  sleepStatus?: string;
+  sleepHistorySummary?: string;
+  recentBloodPressureSummary?: string;
+  recentStepSummary?: string;
+  recentHydrationSummary?: string;
   recentHistorySummary?: string;
   recentTrendSummary?: string;
   prioritySummary?: string;
@@ -60,6 +67,12 @@ export type EducationPromptContext = {
   activitySummary: string;
   mealSummary: string;
   hydrationSummary: string;
+  sleepHours: string;
+  sleepStatus: string;
+  sleepHistorySummary: string;
+  recentBloodPressureSummary: string;
+  recentStepSummary: string;
+  recentHydrationSummary: string;
 };
 
 export type EducationContext = {

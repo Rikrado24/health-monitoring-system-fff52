@@ -689,6 +689,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const sleepHours = sleepMinutes > 0 ? Number((sleepMinutes / 60).toFixed(1)) : 0;
   const sleepDurationLabel = formatSleepDurationLabel(sleepMinutes);
   const sleepRecordedAt = latestSleepEvent ? formatLocalDateTime(latestSleepEvent.occurredAt) : "";
+  const sleepStatus = sleepHours <= 0 ? "Belum ada data" : sleepHours < 6 ? "Kurang" : sleepHours > 9 ? "Berlebih" : "Cukup";
 
   const hasHeight = height > 0;
   const hasWeight = weight > 0;
@@ -1206,12 +1207,87 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     .slice(0, 4)
     .map((entry) => `${formatLocalDateTime(entry.occurredAt)}: Tidur ${entry.value}${entry.note && entry.note !== "-" ? ` • ${entry.note}` : ""}`)
     .join(" | ");
+  const getBloodPressureState = (systolic: number, diastolic: number) => {
+    if (!Number.isFinite(systolic) || !Number.isFinite(diastolic) || systolic <= 0 || diastolic <= 0) return "-";
+    if (systolic < 90 || diastolic < 60) return "Rendah";
+    if (systolic <= 129 && diastolic <= 84) return "Normal";
+    if (systolic <= 139 || diastolic <= 89) return "Waspada";
+    return "Tinggi";
+  };
+  const recentBloodPressureSummary = (() => {
+    const records = measurementHistoryDb.filter((entry) => Number(entry.sistolik) > 0 && Number(entry.diastolik) > 0).slice(0, 4);
+    if (records.length === 0) return "";
+
+    const latestRecord = records[0];
+    const latestValue = `${latestRecord.sistolik}/${latestRecord.diastolik} mmHg`;
+    const latestState = getBloodPressureState(Number(latestRecord.sistolik), Number(latestRecord.diastolik));
+    const notes = [`Tekanan darah terakhir ${latestValue}${latestState !== "-" ? ` (${latestState})` : ""}`];
+
+    if (records[1]) {
+      const previousRecord = records[1];
+      const previousValue = `${previousRecord.sistolik}/${previousRecord.diastolik} mmHg`;
+      const previousState = getBloodPressureState(Number(previousRecord.sistolik), Number(previousRecord.diastolik));
+      if (previousValue !== latestValue) {
+        notes.push(`sebelumnya ${previousValue}${previousState !== "-" ? ` (${previousState})` : ""}`);
+      }
+    }
+
+    if (records.length > 1) {
+      const sameStateCount = records.filter((entry) => getBloodPressureState(Number(entry.sistolik), Number(entry.diastolik)) === latestState).length;
+      notes.push(`${sameStateCount} dari ${records.length} catatan terakhir ada di status yang sama`);
+    }
+
+    return notes.join("; ");
+  })();
+  const recentStepSummary = (() => {
+    const latestSession = activitySessionDocs[0] || null;
+    const previousSession = activitySessionDocs[1] || null;
+    const targetSteps = Math.max(1, Number(targetPrefs.steps || 10000));
+    const parts: string[] = [];
+
+    if (totalActivitySteps > 0) {
+      parts.push(`${totalActivitySteps.toLocaleString("id-ID")} langkah hari ini (${Math.min(100, Math.round((totalActivitySteps / targetSteps) * 100))}% dari target ${targetSteps.toLocaleString("id-ID")})`);
+      parts.push(activityGoalRemaining > 0 ? `masih perlu ${activityGoalRemaining.toLocaleString("id-ID")} langkah lagi` : "target langkah harian sudah tercapai");
+    }
+
+    if (latestSession) {
+      const latestSteps = Number(latestSession.langkah) || 0;
+      const latestDistance = Number(latestSession.distance_m) || 0;
+      const latestDuration = Number(latestSession.duration_sec) || 0;
+      parts.push(
+        `sesi terakhir ${latestSession.motion_label || "aktivitas"}${latestSteps > 0 ? ` ${latestSteps.toLocaleString("id-ID")} langkah` : ""}${latestDistance > 0 ? `, ${(latestDistance / 1000).toFixed(2)} km` : ""}${latestDuration > 0 ? `, ${formatDuration(latestDuration)}` : ""}`
+      );
+    }
+
+    if (latestSession && previousSession && Number(latestSession.langkah) > 0 && Number(previousSession.langkah) > 0 && Number(latestSession.langkah) !== Number(previousSession.langkah)) {
+      parts.push(
+        `dibanding sesi sebelumnya, langkah ${Number(latestSession.langkah) > Number(previousSession.langkah) ? "naik" : "turun"} ${Math.abs(Number(latestSession.langkah) - Number(previousSession.langkah)).toLocaleString("id-ID")}`
+      );
+    }
+
+    return parts.join("; ");
+  })();
+  const recentHydrationSummary = (() => {
+    const latestHydration = hydrationHistoryEventDocs[0] || null;
+    const parts: string[] = [];
+
+    if (historyHydrationTotal > 0) {
+      parts.push(`${historyHydrationTotal.toLocaleString("id-ID")} gelas air dari ${hydrationHistoryEventDocs.length} catatan riwayat`);
+      parts.push(historyHydrationTotal < 7 ? "hidrasi masih perlu ditambah" : "hidrasi sudah cukup");
+    }
+
+    if (latestHydration) {
+      parts.push(`catatan terakhir ${latestHydration.value}${latestHydration.note && latestHydration.note !== "-" ? ` • ${latestHydration.note}` : ""}`);
+    }
+
+    return parts.join("; ");
+  })();
   const mealCaloriesForBot = historyMealCaloriesTotal > 0 ? historyMealCaloriesTotal : mealCaloriesDisplay;
   const waterGlassesForBot = historyHydrationTotal > 0 ? historyHydrationTotal : waterGlasses;
   const educationMealSummary = historyMealSummary || (hasMealData
     ? `${mealCaloriesDisplay.toLocaleString("id-ID")} kkal, ${carbsDisplay.toLocaleString("id-ID")} g karbohidrat, ${proteinDisplay.toLocaleString("id-ID")} g protein, ${fatDisplay.toLocaleString("id-ID")} g lemak, ${fiberDisplay.toLocaleString("id-ID")} g serat`
     : "");
-  const educationHydrationSummary = historyHydrationSummary || (waterGlasses > 0 ? `${waterGlasses} gelas air` : "");
+  const educationHydrationSummary = recentHydrationSummary || historyHydrationSummary || (waterGlasses > 0 ? `${waterGlasses} gelas air` : "");
   const recentTrendSummary = (() => {
     const latestRecord = measurementHistoryDb[0];
     const previousRecord = measurementHistoryDb[1];
@@ -1303,8 +1379,8 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       },
       {
         label: "Pola tidur",
-        score: sleepHours > 0 && sleepHours < 6 ? 65 : sleepHours > 0 && sleepHours > 9 ? 55 : 0,
-        note: sleepHours > 0 ? `${sleepDurationLabel}${sleepHours < 6 ? ", masih kurang" : sleepHours > 9 ? ", terlalu lama" : ", cukup"}` : "",
+        score: sleepStatus === "Kurang" ? 65 : sleepStatus === "Berlebih" ? 55 : 0,
+        note: sleepHours > 0 ? `${sleepDurationLabel}${sleepStatus === "Kurang" ? ", masih kurang" : sleepStatus === "Berlebih" ? ", terlalu lama" : ", cukup"}` : "",
       },
     ]
       .filter((item) => item.score > 0)
@@ -1333,10 +1409,16 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     waterGlasses: waterGlassesForBot,
     mealCalories: mealCaloriesForBot,
     mealSummary: educationMealSummary,
-    activitySummary: educationActivitySummary,
-    hydrationSummary: educationHydrationSummary,
+    activitySummary: recentStepSummary || educationActivitySummary,
+    hydrationSummary: recentHydrationSummary || educationHydrationSummary,
+    recentBloodPressureSummary,
+    recentStepSummary,
+    recentHydrationSummary,
     sleepSummary: sleepHours > 0 ? `${sleepDurationLabel}${latestSleepEvent?.note && latestSleepEvent.note !== "-" ? ` • ${latestSleepEvent.note}` : ""}` : "",
-    recentHistorySummary: [recentTrendSummary, recentMeasurementHistorySummary, recentActivityHistorySummary, recentNutritionHistorySummary, recentSleepHistorySummary]
+    sleepHours,
+    sleepStatus,
+    sleepHistorySummary: recentSleepHistorySummary,
+    recentHistorySummary: [recentTrendSummary, recentBloodPressureSummary, recentStepSummary, recentHydrationSummary, recentMeasurementHistorySummary, recentActivityHistorySummary, recentNutritionHistorySummary, recentSleepHistorySummary]
       .filter((item) => item.trim() !== "")
       .join(" | "),
     recentTrendSummary,
@@ -3640,7 +3722,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                           value={deviceIdInput}
                           onChange={(event) => setDeviceIdInput(normalizeDeviceId(event.target.value))}
                           className="mt-1 w-full rounded-xl border border-[#dfe6ea] px-3 py-2 text-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                          placeholder="Contoh: ESP32-S3-UNO-01"
+                          placeholder="Masukkan ID perangkat"
                         />
                       </label>
                       <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800">
@@ -3987,7 +4069,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                       <h3 className="text-2xl font-black text-slate-900">{mealPanel}</h3>
                       <p className="text-sm text-slate-500">
                         {mealPanel === "Input Pola Makan"
-                          ? "Pilih contoh makanan untuk membantu mengisi 6 parameter pola makan hari ini."
+                          ? "Pilih makanan untuk membantu mengisi parameter pola makan hari ini."
                           : mealPanel === "Asupan Air"
                             ? "Atur jumlah gelas air harian agar target hidrasi tetap tercapai."
                             : mealPanel === "Pola Tidur"
@@ -4230,7 +4312,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                     <div className="space-y-4">
                       <label className="block text-sm font-bold text-slate-700">
                         Catatan Hari Ini
-                        <textarea className="mt-1 min-h-36 w-full resize-none rounded-xl border border-[#dfe6ea] px-3 py-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100" maxLength={300} placeholder="Contoh: Hari ini makan lebih teratur, tapi masih kurang minum air." value={mealNote} onChange={(event) => setMealNote(event.target.value)} />
+                        <textarea className="mt-1 min-h-36 w-full resize-none rounded-xl border border-[#dfe6ea] px-3 py-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100" maxLength={300} placeholder="Tulis ringkasan pola makan hari ini." value={mealNote} onChange={(event) => setMealNote(event.target.value)} />
                       </label>
                       <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
                         <span>{mealSavedAt ? `Terakhir disimpan: ${mealSavedAt}` : "Belum pernah disimpan."}</span>
@@ -4271,7 +4353,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                       <div className="grid gap-4 sm:grid-cols-2">
                         <label className="text-sm font-bold text-slate-700">
                           Nama Pengingat
-                          <input value={reminderDraft.title} onChange={(event) => setReminderDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Contoh: Minum Air Putih" className="mt-1 w-full rounded-xl border border-[#dfe6ea] px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100" />
+                          <input value={reminderDraft.title} onChange={(event) => setReminderDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Nama pengingat" className="mt-1 w-full rounded-xl border border-[#dfe6ea] px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100" />
                         </label>
                         <label className="text-sm font-bold text-slate-700">
                           Jam
@@ -4292,7 +4374,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                       </div>
                       <label className="block text-sm font-bold text-slate-700">
                         Deskripsi
-                        <textarea value={reminderDraft.description} onChange={(event) => setReminderDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Contoh: Minum 1 gelas air" className="mt-1 min-h-24 w-full resize-none rounded-xl border border-[#dfe6ea] px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100" />
+                        <textarea value={reminderDraft.description} onChange={(event) => setReminderDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Deskripsi pengingat" className="mt-1 min-h-24 w-full resize-none rounded-xl border border-[#dfe6ea] px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100" />
                       </label>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <button type="submit" className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-black text-white hover:bg-emerald-700">{reminderModal === "edit" ? "Simpan Perubahan" : "Simpan Pengingat"}</button>
@@ -4463,7 +4545,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                             <input
                               className="w-full rounded-2xl border border-orange-100 bg-white px-4 py-3 text-[15px] font-semibold text-slate-900 outline-none transition focus:border-orange-300"
                               inputMode="numeric"
-                              placeholder="Contoh: 78"
+                              placeholder="Masukkan angka detak jantung"
                               value={manualHeartRate}
                               onChange={(event) => setManualHeartRate(normalizeHealthNumberInput(event.target.value))}
                             />
@@ -4495,7 +4577,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                           <textarea
                             className="min-h-28 w-full resize-none rounded-2xl border border-[#dfe6ea] px-4 py-3 text-[14px] leading-6 text-slate-700 outline-none transition focus:border-emerald-400"
                             maxLength={200}
-                            placeholder="Tambahkan catatan pengukuran..."
+                            placeholder="Tulis catatan pengukuran, jika perlu"
                             value={manualNote}
                             onChange={(event) => setManualNote(event.target.value)}
                           />
@@ -4920,7 +5002,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                     </article>
                     <article className="rounded-2xl border border-[#e4eaee] bg-white p-4">
                       <h4 className="text-lg font-bold text-slate-900">Catatan Harian</h4>
-                      <textarea className="mt-3 min-h-24 w-full resize-none rounded-xl border border-[#dfe6ea] px-3 py-2 text-sm" maxLength={200} placeholder="Bagaimana pola makan Anda hari ini?" value={mealNote} onChange={(event) => setMealNote(event.target.value)} />
+                      <textarea className="mt-3 min-h-24 w-full resize-none rounded-xl border border-[#dfe6ea] px-3 py-2 text-sm" maxLength={200} placeholder="Tulis ringkasan pola makan hari ini." value={mealNote} onChange={(event) => setMealNote(event.target.value)} />
                       <p className="mt-1 text-right text-xs text-slate-500">{mealNote.length}/200</p>
                       <button type="button" onClick={() => setMealPanel("Catatan Harian")} className="mt-2 w-full rounded-xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700">Buka Catatan Harian</button>
                       </article>

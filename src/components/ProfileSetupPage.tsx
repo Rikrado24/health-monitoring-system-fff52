@@ -229,7 +229,7 @@ export default function ProfileSetupPage({
                       value={fullName}
                       onChange={(event) => setFullName(event.target.value)}
                       className="w-full rounded-2xl border border-[#d8e4dc] bg-[#fbfdfb] px-4 py-3.5 text-[15px] text-slate-700 outline-none transition focus:border-[#1f7a5c] focus:bg-white"
-                      placeholder="Masukkan nama lengkap"
+                      placeholder="Nama lengkap Anda"
                     />
                   </label>
 
@@ -239,7 +239,7 @@ export default function ProfileSetupPage({
                       value={username}
                       onChange={(event) => setUsername(event.target.value)}
                       className="w-full rounded-2xl border border-[#d8e4dc] bg-[#fbfdfb] px-4 py-3.5 text-[15px] text-slate-700 outline-none transition focus:border-[#1f7a5c] focus:bg-white"
-                      placeholder="contoh: rikardo_01"
+                      placeholder="Nama pengguna Anda"
                     />
                   </label>
                 </div>
@@ -274,7 +274,7 @@ export default function ProfileSetupPage({
                       value={phone}
                       onChange={(event) => setPhone(event.target.value)}
                       className="w-full rounded-2xl border border-[#d8e4dc] bg-[#fbfdfb] px-4 py-3.5 text-[15px] text-slate-700 outline-none transition focus:border-[#1f7a5c] focus:bg-white"
-                      placeholder="08xxxxxxxxxx"
+                      placeholder="Nomor HP aktif"
                     />
                   </label>
 

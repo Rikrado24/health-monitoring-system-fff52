@@ -301,8 +301,20 @@ const collectDataLines = (context: EducationContext) => {
     isMeaningfulValue(context.educationContext.hydrationSummary)
       ? `Hidrasi ${context.educationContext.hydrationSummary} (${analysis.hydrationStatus})`
       : "",
+    isMeaningfulValue(context.educationContext.recentBloodPressureSummary)
+      ? `Riwayat tekanan darah ${context.educationContext.recentBloodPressureSummary}`
+      : "",
+    isMeaningfulValue(context.educationContext.recentStepSummary)
+      ? `Riwayat langkah ${context.educationContext.recentStepSummary}`
+      : "",
+    isMeaningfulValue(context.educationContext.recentHydrationSummary)
+      ? `Riwayat hidrasi ${context.educationContext.recentHydrationSummary}`
+      : "",
     isMeaningfulValue(context.educationContext.mealSummary) ? `Pola makan ${context.educationContext.mealSummary}` : "",
-    isMeaningfulValue(context.educationContext.sleepSummary) ? `Pola tidur ${context.educationContext.sleepSummary}` : "",
+    isMeaningfulValue(context.educationContext.sleepSummary)
+      ? `Pola tidur ${context.educationContext.sleepSummary} (${context.educationContext.sleepStatus || "Belum ada data"})`
+      : "",
+    isMeaningfulValue(context.educationContext.sleepHistorySummary) ? `Riwayat tidur ${context.educationContext.sleepHistorySummary}` : "",
   ].filter(Boolean);
 };
 
@@ -315,8 +327,12 @@ const collectMissingData = (context: EducationContext) => {
     !isMeaningfulValue(context.educationContext.heartRate) ? "detak jantung" : "",
     !isMeaningfulValue(context.educationContext.activitySummary) ? "aktivitas harian" : "",
     !isMeaningfulValue(context.educationContext.hydrationSummary) ? "hidrasi" : "",
+    !isMeaningfulValue(context.educationContext.recentBloodPressureSummary) ? "riwayat tekanan darah" : "",
+    !isMeaningfulValue(context.educationContext.recentStepSummary) ? "riwayat langkah" : "",
+    !isMeaningfulValue(context.educationContext.recentHydrationSummary) ? "riwayat hidrasi" : "",
     !isMeaningfulValue(context.educationContext.mealSummary) ? "pola makan" : "",
     !isMeaningfulValue(context.educationContext.sleepSummary) ? "pola tidur" : "",
+    !isMeaningfulValue(context.educationContext.sleepHistorySummary) ? "riwayat tidur" : "",
   ].filter(Boolean);
 };
 
@@ -377,7 +393,11 @@ const buildGuidanceByTopic = (topic: TopicAnalysis, context: EducationContext) =
           : "Lengkapi data minum agar saya bisa memberi saran hidrasi yang lebih tepat.";
     case "pola_tidur":
       return isMeaningfulValue(context.educationContext.sleepSummary)
-        ? "Pertahankan pola tidur yang stabil dan usahakan jam tidur konsisten."
+        ? context.educationContext.sleepStatus === "Kurang"
+          ? "Tidur Anda masih kurang, jadi coba tambah durasi istirahat dan jaga jam tidur lebih konsisten."
+          : context.educationContext.sleepStatus === "Berlebih"
+            ? "Tidur Anda cenderung lebih lama dari biasanya, jadi cek apakah ada kelelahan berlebih atau jadwal tidur yang terlalu mundur."
+            : "Pertahankan pola tidur yang stabil dan usahakan jam tidur konsisten."
         : "Kalau data tidur ada, saya bisa mengaitkannya dengan kondisi harian Anda dengan lebih tepat.";
     default:
       return context.analysis.overallRecommendation;
@@ -439,7 +459,13 @@ Konteks kesehatan:
 - Riwayat pengukuran: ${input.context.educationContext.recentMeasurementSummary || "-"}
 - Riwayat aktivitas: ${input.context.educationContext.recentActivitySummary || "-"}
 - Riwayat nutrisi: ${input.context.educationContext.recentNutritionSummary || "-"}
+- Riwayat tekanan darah: ${input.context.educationContext.recentBloodPressureSummary || "-"}
+- Riwayat langkah: ${input.context.educationContext.recentStepSummary || "-"}
+- Riwayat hidrasi: ${input.context.educationContext.recentHydrationSummary || "-"}
 - Pola tidur: ${input.context.educationContext.sleepSummary || "-"}
+- Durasi tidur: ${input.context.educationContext.sleepHours || "-"}
+- Status tidur: ${input.context.educationContext.sleepStatus || "-"}
+- Riwayat tidur: ${input.context.educationContext.sleepHistorySummary || "-"}
 - Tekanan darah: ${input.context.educationContext.bloodPressure}
 - Status tekanan darah: ${input.context.educationContext.bloodPressureStatus}
 - Detak jantung: ${input.context.educationContext.heartRate}
@@ -453,7 +479,11 @@ Analisis cepat:
 - Status BMI: ${input.context.analysis.bmiStatus}
 - Status aktivitas: ${input.context.analysis.activityStatus}
 - Status hidrasi: ${input.context.analysis.hydrationStatus}
+- Status tidur: ${input.context.analysis.sleepStatus}
 - Status keseluruhan: ${input.context.analysis.overallStatus}
+- Ringkasan tekanan darah riwayat: ${input.context.educationContext.recentBloodPressureSummary || "-"}
+- Ringkasan langkah riwayat: ${input.context.educationContext.recentStepSummary || "-"}
+- Ringkasan hidrasi riwayat: ${input.context.educationContext.recentHydrationSummary || "-"}
 
 Snapshot data:
 - Data yang tersedia: ${collectDataLines(input.context).join(" | ") || "belum ada data yang bisa dipakai"}
