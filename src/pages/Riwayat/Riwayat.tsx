@@ -851,7 +851,7 @@ function RiwayatContent({
             <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>Total Event</span><span className="font-semibold">{hasAnyData ? activeTimelineRows.length : "-"}</span></div>
             <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>Rata-rata Tensi</span><span className="font-semibold">{hasBloodPressure ? bloodPressure : "-"}</span></div>
             <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>Rata-rata Jantung</span><span className="font-semibold">{hasHeartRate ? `${heartRate} bpm` : "-"}</span></div>
-            <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>Rata-rata Tidur</span><span className="font-semibold">{hasAnyData ? "7j 15m" : "-"}</span></div>
+            <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>Rata-rata Tidur</span><span className="font-semibold">Belum ada data</span></div>
           </div>
           <button
             type="button"
