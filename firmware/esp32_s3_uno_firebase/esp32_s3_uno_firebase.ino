@@ -57,8 +57,6 @@ const int MEASUREMENT_RETRY_LIMIT = 4;
 const unsigned long DISPLAY_POLL_INTERVAL_MS = 5000;
 const unsigned long DISPLAY_ANNOUNCE_MS = 2200;
 const unsigned long HEARTBEAT_INTERVAL_MS = 15000;
-const unsigned long LCD_SCROLL_INTERVAL_MS = 280;
-const unsigned long LCD_SCROLL_PAUSE_MS = 900;
 const int LCD_WIDTH = 16;
 
 float lastDistanceCm = 0;
@@ -69,10 +67,6 @@ unsigned long displayAnnouncementUntilMs = 0;
 unsigned long lastHeartbeatMs = 0;
 String lastLcdLine1 = "";
 String lastLcdLine2 = "";
-String activeScrollSource = "";
-int activeScrollOffset = 0;
-unsigned long lastScrollTickMs = 0;
-unsigned long scrollPauseUntilMs = 0;
 
 void beep(int durasi)
 {
@@ -91,52 +85,11 @@ String padRight(String text, int width)
   return text.substring(0, width);
 }
 
-String buildScrollingLine(String source)
-{
-  if (source.length() <= LCD_WIDTH)
-  {
-    activeScrollSource = "";
-    activeScrollOffset = 0;
-    return padRight(source, LCD_WIDTH);
-  }
-
-  if (source != activeScrollSource)
-  {
-    activeScrollSource = source;
-    activeScrollOffset = 0;
-    lastScrollTickMs = millis();
-    scrollPauseUntilMs = millis() + LCD_SCROLL_PAUSE_MS;
-  }
-
-  String scrollBuffer = source + "   ";
-
-  if (millis() >= scrollPauseUntilMs &&
-      millis() - lastScrollTickMs >= LCD_SCROLL_INTERVAL_MS)
-  {
-    activeScrollOffset++;
-    lastScrollTickMs = millis();
-
-    if (activeScrollOffset >= scrollBuffer.length())
-    {
-      activeScrollOffset = 0;
-      scrollPauseUntilMs = millis() + LCD_SCROLL_PAUSE_MS;
-    }
-  }
-
-  String visible = "";
-  for (int i = 0; i < LCD_WIDTH; i++)
-  {
-    int index = (activeScrollOffset + i) % scrollBuffer.length();
-    visible += scrollBuffer.charAt(index);
-  }
-
-  return visible;
-}
-
 void showStatus(String line1, String line2 = "", bool scrollLine2 = false)
 {
   line1 = padRight(line1, LCD_WIDTH);
-  line2 = scrollLine2 ? buildScrollingLine(line2) : padRight(line2, LCD_WIDTH);
+  (void)scrollLine2;
+  line2 = padRight(line2, LCD_WIDTH);
 
   if (line1 == lastLcdLine1 && line2 == lastLcdLine2)
   {

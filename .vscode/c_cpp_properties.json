@@ -5,7 +5,7 @@
       "includePath": [
         "${workspaceFolder}/**",
         "C:/Users/USER/AppData/Local/Arduino15/packages/esp32/hardware/esp32/3.3.7/**",
-        "C:/Users/USER/AppData/Local/Arduino15/packages/esp32/tools/esp32-arduino-libs/**",
+        "C:/Users/USER/AppData/Local/Arduino15/packages/esp32/tools/esp32s3-libs/3.3.7/**",
         "C:/Users/USER/OneDrive/Documents/Arduino/libraries/LiquidCrystal_I2C/**",
         "C:/Users/USER/OneDrive/Documents/Arduino/libraries/HX711/**",
         "C:/Users/USER/OneDrive/Documents/Arduino/libraries/HX711_Arduino_Library/src/**"

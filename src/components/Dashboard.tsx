@@ -17,6 +17,7 @@ import {
 import { buildUserProfileDoc, getUserProfile, saveUserProfile, subscribeUserProfile } from "../services/userProfile";
 import { getActivitySessionsForUser, saveActivitySessionForUser } from "../services/activitySessions";
 import { analyzeEducationTopic, buildEducationContext, sendEducationQuestionToAI } from "../services/aiDoctor";
+import { HEALTH_PREDICTION_FEATURE_KEYS } from "../services/healthFeatureEngineering";
 import {
   clearEducationChatMessagesForUser,
   createEducationChatMessageForUser,
@@ -94,6 +95,27 @@ const MENU_NAV_ITEMS: ReadonlyArray<{
   { menu: "Pengaturan", label: "Pengaturan", shortLabel: "Atur", icon: "fa-gear", description: "Kelola profil dan preferensi akun" },
 ] as const;
 const ADMIN_MEMORY_EMAIL = "ireniusrikardo71@gmail.com";
+const HEALTH_VECTOR_LABELS: Record<string, string> = {
+  age: "Usia",
+  gender: "Gender",
+  height_cm: "Tinggi",
+  weight_kg: "Berat",
+  bmi: "BMI",
+  heart_rate: "Detak",
+  systolic_bp: "Sistolik",
+  diastolic_bp: "Diastolik",
+  steps: "Langkah",
+  recent_weight_delta_kg: "Δ Berat",
+  recent_bmi_delta: "Δ BMI",
+  recent_heart_rate_delta: "Δ Detak",
+  recent_systolic_delta: "Δ Sis",
+  recent_diastolic_delta: "Δ Dia",
+  recent_steps_delta: "Δ Langkah",
+  recent_meal_calorie_delta: "Δ Kalori Makan",
+  recent_hydration_delta: "Δ Hidrasi",
+  recent_sleep_hours_delta: "Δ Tidur",
+  recent_activity_calorie_delta: "Δ Aktivitas",
+};
 const DEFAULT_DEVICE_ID = "ESP32-S3-UNO-01";
 const DEFAULT_DEVICE_WRITE_KEY = "KEY-B48D2CD66FE74190A917";
 const RIWAYAT_FILTER_OPTIONS = [
@@ -590,7 +612,10 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const [learningMemoryLoading, setLearningMemoryLoading] = useState(false);
   const [learningMemoryAction, setLearningMemoryAction] = useState("");
   const [learningMemoryFilter, setLearningMemoryFilter] = useState<LearningMemoryPanelFilter>("Semua");
+  const [learningMemorySearchInput, setLearningMemorySearchInput] = useState("");
   const [learningMemorySearch, setLearningMemorySearch] = useState("");
+  const [expandedLearningMemory, setExpandedLearningMemory] = useState<Record<string, boolean>>({});
+  const [selectedLearningMemoryPath, setSelectedLearningMemoryPath] = useState("");
   const [notificationSettings, setNotificationSettings] = useState<Record<string, boolean>>({
     "Pengingat Minum Air": true,
     "Pengingat Aktivitas": true,
@@ -2029,6 +2054,14 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     };
   }, [isMemoryAdmin, storageReady, userUid]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setLearningMemorySearch(learningMemorySearchInput);
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [learningMemorySearchInput]);
+
   const selectedHelpArticle = activeHelpArticle ? helpArticles[activeHelpArticle] : null;
 
   const manualValue = (value: string | number, unit: string) => (
@@ -2087,34 +2120,37 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     () => {
       const query = learningMemorySearch.trim().toLowerCase();
 
-      return learningMemoryEntries.filter((entry) => {
-        const matchesFilter =
-          learningMemoryFilter === "Semua"
-            ? true
-            : learningMemoryFilter === "Approved"
-              ? entry.approvalStatus === "approved"
-              : learningMemoryFilter === "Pending"
-                ? entry.approvalStatus === "pending"
-                : entry.approvalStatus === "rejected";
+      return learningMemoryEntries
+        .slice()
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.updatedAt.localeCompare(left.updatedAt))
+        .filter((entry) => {
+          const matchesFilter =
+            learningMemoryFilter === "Semua"
+              ? true
+              : learningMemoryFilter === "Approved"
+                ? entry.approvalStatus === "approved"
+                : learningMemoryFilter === "Pending"
+                  ? entry.approvalStatus === "pending"
+                  : entry.approvalStatus === "rejected";
 
-        if (!matchesFilter) return false;
-        if (!query) return true;
+          if (!matchesFilter) return false;
+          if (!query) return true;
 
-        const searchable = [
-          entry.labelName,
-          entry.key,
-          entry.path,
-          entry.source,
-          entry.scope,
-          entry.approvalStatus,
-          entry.uid || "",
-          entry.note || "",
-        ]
-          .join(" ")
-          .toLowerCase();
+          const searchable = [
+            entry.labelName,
+            entry.key,
+            entry.path,
+            entry.source,
+            entry.scope,
+            entry.approvalStatus,
+            entry.uid || "",
+            entry.note || "",
+          ]
+            .join(" ")
+            .toLowerCase();
 
-        return searchable.includes(query);
-      });
+          return searchable.includes(query);
+        });
     },
     [learningMemoryEntries, learningMemoryFilter, learningMemorySearch]
   );
@@ -2126,6 +2162,21 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     const global = learningMemoryEntries.filter((entry) => entry.scope === "global").length;
     return { approved, pending, rejected, personal, global };
   }, [learningMemoryEntries]);
+
+  const selectedLearningMemoryEntry = useMemo(
+    () => visibleLearningMemoryEntries.find((entry) => entry.path === selectedLearningMemoryPath) || visibleLearningMemoryEntries[0] || null,
+    [selectedLearningMemoryPath, visibleLearningMemoryEntries]
+  );
+
+  useEffect(() => {
+    if (!selectedLearningMemoryEntry) {
+      setSelectedLearningMemoryPath("");
+      return;
+    }
+    if (!visibleLearningMemoryEntries.some((entry) => entry.path === selectedLearningMemoryPath)) {
+      setSelectedLearningMemoryPath(selectedLearningMemoryEntry.path);
+    }
+  }, [selectedLearningMemoryEntry, selectedLearningMemoryPath, visibleLearningMemoryEntries]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -6161,7 +6212,13 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                               onClick={() => setLearningMemoryFilter(filter)}
                               className={`rounded-full px-4 py-2 text-xs font-black transition ${
                                 learningMemoryFilter === filter
-                                  ? "bg-emerald-700 text-white"
+                                  ? filter === "Semua"
+                                    ? "bg-[linear-gradient(135deg,#0f766e_0%,#059669_100%)] text-white shadow-[0_12px_24px_-18px_rgba(5,150,105,0.9)]"
+                                    : filter === "Approved"
+                                      ? "bg-[linear-gradient(135deg,#0f9d58_0%,#14b8a6_100%)] text-white shadow-[0_12px_24px_-18px_rgba(20,184,166,0.9)]"
+                                      : filter === "Pending"
+                                        ? "bg-[linear-gradient(135deg,#f59e0b_0%,#fb923c_100%)] text-white shadow-[0_12px_24px_-18px_rgba(251,146,60,0.9)]"
+                                        : "bg-[linear-gradient(135deg,#f43f5e_0%,#e11d48_100%)] text-white shadow-[0_12px_24px_-18px_rgba(225,29,72,0.9)]"
                                   : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                               }`}
                             >
@@ -6175,8 +6232,8 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                         <label className="flex items-center gap-3 rounded-2xl border border-[#e4eaee] bg-white px-4 py-3">
                           <i className="fa-solid fa-magnifying-glass text-slate-400" />
                           <input
-                            value={learningMemorySearch}
-                            onChange={(event) => setLearningMemorySearch(event.target.value)}
+                            value={learningMemorySearchInput}
+                            onChange={(event) => setLearningMemorySearchInput(event.target.value)}
                             placeholder="Cari label, path, uid, sumber..."
                             className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
                           />
@@ -6205,56 +6262,82 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                         </div>
                       </div>
 
-                      <div className="mt-4 space-y-3">
+                      <div className="mt-4 grid gap-3 xl:grid-cols-2 2xl:grid-cols-2">
                         {learningMemoryLoading ? (
-                          <div className="rounded-2xl border border-dashed border-[#dfe6ea] bg-white px-4 py-10 text-center text-sm text-slate-500">
+                          <div className="col-span-full rounded-2xl border border-dashed border-[#dfe6ea] bg-white px-4 py-10 text-center text-sm text-slate-500">
                             Memuat memori belajar...
                           </div>
                         ) : visibleLearningMemoryEntries.length > 0 ? (
                           visibleLearningMemoryEntries.map((entry) => {
                             const isBusy = learningMemoryAction === entry.path;
+                            const isExpanded = Boolean(expandedLearningMemory[entry.path]);
                             const statusTone =
                               entry.approvalStatus === "approved"
-                                ? "bg-emerald-50 text-emerald-700"
+                                ? "bg-[linear-gradient(135deg,#0f9d58_0%,#14b8a6_100%)] text-white shadow-[0_12px_26px_-18px_rgba(20,184,166,0.9)] ring-1 ring-emerald-200/80"
                                 : entry.approvalStatus === "pending"
-                                  ? "bg-amber-50 text-amber-700"
-                                  : "bg-rose-50 text-rose-700";
+                                  ? "bg-[linear-gradient(135deg,#f59e0b_0%,#f97316_100%)] text-white shadow-[0_12px_26px_-18px_rgba(249,115,22,0.9)] ring-1 ring-amber-200/80"
+                                  : "bg-[linear-gradient(135deg,#fb7185_0%,#e11d48_100%)] text-white shadow-[0_12px_26px_-18px_rgba(225,29,72,0.9)] ring-1 ring-rose-200/80";
+                            const approvalIcon =
+                              entry.approvalStatus === "approved"
+                                ? "fa-circle-check"
+                                : entry.approvalStatus === "pending"
+                                  ? "fa-hourglass-half"
+                                  : "fa-circle-xmark";
+                            const scopeTone =
+                              entry.scope === "personal"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : "border-slate-200 bg-slate-50 text-slate-700";
+                            const sourceTone =
+                              entry.source === "manual"
+                                ? "border-sky-200 bg-sky-50 text-sky-700"
+                                : entry.source === "chat"
+                                  ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                                  : "border-violet-200 bg-violet-50 text-violet-700";
                             return (
-                              <article key={entry.path} className="rounded-[26px] border border-[#e5ece8] bg-white p-4 shadow-[0_14px_28px_-30px_rgba(15,23,42,0.28)]">
+                              <article
+                                key={entry.path}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setSelectedLearningMemoryPath(entry.path)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    setSelectedLearningMemoryPath(entry.path);
+                                  }
+                                }}
+                                className={`rounded-[28px] border bg-white p-4 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.32)] outline-none transition ${
+                                  selectedLearningMemoryEntry?.path === entry.path
+                                    ? "border-emerald-300 ring-2 ring-emerald-100"
+                                    : "border-[#e5ece8] hover:border-emerald-200 hover:shadow-[0_20px_38px_-30px_rgba(15,23,42,0.36)]"
+                                }`}
+                              >
                                 <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                                   <div className="min-w-0">
                                     <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
                                       {entry.scope === "personal" ? "Personal" : "Global"} · {entry.source}
                                     </p>
                                     <h4 className="mt-1 truncate text-lg font-black text-slate-900">
-                                      {entry.labelName || `Label ${entry.label}`}
+                                      <HighlightedText text={entry.labelName || `Label ${entry.label}`} query={learningMemorySearch} />
                                     </h4>
                                     <p className="mt-1 text-sm text-slate-500">
-                                      Support {entry.support} · Confidence {(entry.confidence * 100).toFixed(1)}% · Kunci {entry.key}
+                                      Support {entry.support} · Confidence {(entry.confidence * 100).toFixed(1)}% · Kunci{" "}
+                                      <HighlightedText text={entry.key} query={learningMemorySearch} />
                                     </p>
                                     <div className="mt-3 flex flex-wrap gap-2">
-                                      <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black text-slate-700">
+                                      <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-black shadow-sm ${scopeTone}`}>
+                                        <i className={`fa-solid ${entry.scope === "personal" ? "fa-user" : "fa-globe"}`} />
                                         {entry.scope === "personal" ? "Personal" : "Global"}
                                       </span>
-                                      <span className="inline-flex rounded-full bg-sky-50 px-3 py-1 text-[11px] font-black text-sky-700">
+                                      <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-black shadow-sm ${sourceTone}`}>
+                                        <i className={`fa-solid ${entry.source === "manual" ? "fa-pen-to-square" : entry.source === "chat" ? "fa-comments" : "fa-brain"}`} />
                                         {entry.source}
                                       </span>
-                                      <span
-                                        className={`inline-flex rounded-full px-3 py-1 text-[11px] font-black ${
-                                          entry.approvalStatus === "approved"
-                                            ? "bg-emerald-50 text-emerald-700"
-                                            : entry.approvalStatus === "pending"
-                                              ? "bg-amber-50 text-amber-700"
-                                              : "bg-rose-50 text-rose-700"
-                                        }`}
-                                      >
+                                      <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-black ${statusTone}`}>
+                                        <i className={`fa-solid ${approvalIcon}`} />
                                         {entry.approvalStatus}
                                       </span>
                                     </div>
                                   </div>
-                                  <span className={`inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-black ${statusTone}`}>
-                                    {entry.approvalStatus}
-                                  </span>
                                 </div>
 
                                 <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -6282,10 +6365,49 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                                   {entry.note ? <p className="mt-2 font-medium text-slate-700">Catatan: {entry.note}</p> : null}
                                 </div>
 
+                                <div className="mt-4">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Feature Vector</p>
+                                    {entry.values.length > 6 ? (
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setExpandedLearningMemory((current) => ({ ...current, [entry.path]: !current[entry.path] }));
+                                        }}
+                                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-black text-slate-600 transition hover:bg-slate-50"
+                                      >
+                                        {isExpanded ? "Ringkas" : "Lihat semua"}
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {HEALTH_PREDICTION_FEATURE_KEYS.filter((_, index) => isExpanded || index < 6).map((featureKey, index) => (
+                                      <span
+                                        key={`${entry.path}-${featureKey}`}
+                                        className="inline-flex items-center gap-1.5 rounded-full border border-[#e4eaee] bg-gradient-to-r from-slate-50 to-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm"
+                                      >
+                                        <span className="text-slate-500">{HEALTH_VECTOR_LABELS[featureKey] || featureKey}</span>
+                                        <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-black text-white">
+                                          {Number(entry.values[index] ?? 0).toFixed(1)}
+                                        </span>
+                                      </span>
+                                    ))}
+                                    {!isExpanded && entry.values.length > 6 ? (
+                                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-black text-emerald-700 shadow-sm">
+                                        +{entry.values.length - 6} lagi
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </div>
+
                                 <div className="mt-4 flex flex-wrap gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => void handleLearningMemoryAction(entry, "approve")}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void handleLearningMemoryAction(entry, "approve");
+                                    }}
                                     disabled={isBusy || entry.approvalStatus === "approved"}
                                     className="rounded-full bg-emerald-700 px-4 py-2 text-xs font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                                   >
@@ -6293,7 +6415,10 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => void handleLearningMemoryAction(entry, "reject")}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void handleLearningMemoryAction(entry, "reject");
+                                    }}
                                     disabled={isBusy || entry.approvalStatus === "rejected"}
                                     className="rounded-full border border-amber-200 bg-white px-4 py-2 text-xs font-black text-amber-700 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:text-slate-300"
                                   >
@@ -6301,7 +6426,10 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => void handleLearningMemoryAction(entry, "delete")}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void handleLearningMemoryAction(entry, "delete");
+                                    }}
                                     disabled={isBusy}
                                     className="rounded-full border border-rose-200 bg-white px-4 py-2 text-xs font-black text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-slate-300"
                                   >
@@ -6322,29 +6450,81 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                     </AppCard>
 
                     <AppCard className="p-4 sm:p-5">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Ringkasan</p>
-                      <h3 className="mt-1 text-lg font-black text-slate-900">Status memori aktif</h3>
-                      <div className="mt-4 space-y-3 text-sm">
-                        <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2">
-                          <span className="font-medium text-slate-500">Global</span>
-                          <span className="font-black text-slate-900">{learningMemoryStats.global}</span>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Detail Sampel</p>
+                      <h3 className="mt-1 text-lg font-black text-slate-900">Klik kartu untuk lihat detail</h3>
+                      {selectedLearningMemoryEntry ? (
+                        <div className="mt-4">
+                          <div className="rounded-[26px] border border-[#e5ece8] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbf9_100%)] p-4 shadow-[0_16px_30px_-26px_rgba(15,23,42,0.25)]">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                                  {selectedLearningMemoryEntry.scope === "personal" ? "Personal" : "Global"} · {selectedLearningMemoryEntry.source}
+                                </p>
+                                <h4 className="mt-1 truncate text-xl font-black text-slate-900">
+                                  <HighlightedText text={selectedLearningMemoryEntry.labelName || `Label ${selectedLearningMemoryEntry.label}`} query={learningMemorySearch} />
+                                </h4>
+                                <p className="mt-2 text-sm text-slate-500">
+                                  Confidence {(selectedLearningMemoryEntry.confidence * 100).toFixed(1)}% · Support {selectedLearningMemoryEntry.support}
+                                </p>
+                              </div>
+                              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-black ${selectedLearningMemoryEntry.approvalStatus === "approved" ? "bg-emerald-50 text-emerald-700" : selectedLearningMemoryEntry.approvalStatus === "pending" ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"}`}>
+                                <i className={`fa-solid ${selectedLearningMemoryEntry.approvalStatus === "approved" ? "fa-circle-check" : selectedLearningMemoryEntry.approvalStatus === "pending" ? "fa-hourglass-half" : "fa-circle-xmark"}`} />
+                                {selectedLearningMemoryEntry.approvalStatus}
+                              </span>
+                            </div>
+
+                            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                              <div className="rounded-2xl bg-white px-3 py-2">
+                                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Dibuat</p>
+                                <p className="mt-1 text-sm font-black text-slate-900">{formatLocalDateTime(new Date(selectedLearningMemoryEntry.createdAt))}</p>
+                              </div>
+                              <div className="rounded-2xl bg-white px-3 py-2">
+                                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Diubah</p>
+                                <p className="mt-1 text-sm font-black text-slate-900">{formatLocalDateTime(new Date(selectedLearningMemoryEntry.updatedAt))}</p>
+                              </div>
+                              <div className="rounded-2xl bg-white px-3 py-2">
+                                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">UID</p>
+                                <p className="mt-1 truncate text-sm font-black text-slate-900">
+                                  <HighlightedText text={selectedLearningMemoryEntry.uid || "-"} query={learningMemorySearch} />
+                                </p>
+                              </div>
+                              <div className="rounded-2xl bg-white px-3 py-2">
+                                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Approval by</p>
+                                <p className="mt-1 truncate text-sm font-black text-slate-900">{selectedLearningMemoryEntry.approvalBy || "-"}</p>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 rounded-2xl border border-dashed border-[#e4eaee] bg-white px-3 py-2 text-xs leading-6 text-slate-600">
+                              <p className="font-bold text-slate-700">Path</p>
+                              <p className="break-all">
+                                <HighlightedText text={selectedLearningMemoryEntry.path} query={learningMemorySearch} />
+                              </p>
+                              {selectedLearningMemoryEntry.note ? <p className="mt-2 font-medium text-slate-700">Catatan: {selectedLearningMemoryEntry.note}</p> : null}
+                            </div>
+
+                            <div className="mt-4">
+                              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Feature Vector</p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {HEALTH_PREDICTION_FEATURE_KEYS.map((featureKey, index) => (
+                                  <span key={`${selectedLearningMemoryEntry.path}-${featureKey}`} className="inline-flex items-center gap-1.5 rounded-full border border-[#e4eaee] bg-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm">
+                                    <span className="text-slate-500">{HEALTH_VECTOR_LABELS[featureKey] || featureKey}</span>
+                                    <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-black text-white">
+                                      {Number(selectedLearningMemoryEntry.values[index] ?? 0).toFixed(1)}
+                                    </span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2">
-                          <span className="font-medium text-slate-500">Personal</span>
-                          <span className="font-black text-slate-900">{learningMemoryStats.personal}</span>
+                      ) : (
+                        <div className="mt-4 rounded-[22px] border border-dashed border-[#dfe6ea] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbf8_100%)] p-4 text-sm leading-6 text-slate-600">
+                          <p className="font-black text-slate-900">Aturan singkat</p>
+                          <p className="mt-1">
+                            Sampel pending belum dipakai untuk prediksi. Setelah di-approve, sampel langsung masuk ke memori aktif dan ikut memengaruhi hasil KNN.
+                          </p>
                         </div>
-                        <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2">
-                          <span className="font-medium text-slate-500">Filter aktif</span>
-                          <span className="font-black text-slate-900">{learningMemoryFilter}</span>
-                        </div>
-                      </div>
-                      <div className="mt-4 rounded-[22px] border border-dashed border-[#dfe6ea] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbf8_100%)] p-4 text-sm leading-6 text-slate-600">
-                        <p className="font-black text-slate-900">Aturan singkat</p>
-                        <p className="mt-1">
-                          Sampel pending belum dipakai untuk prediksi. Setelah di-approve, sampel langsung masuk ke memori aktif dan ikut
-                          memengaruhi hasil KNN.
-                        </p>
-                      </div>
+                      )}
                     </AppCard>
                   </section>
                 </PageContainer>
@@ -6592,5 +6772,29 @@ function EmptyState({
         ) : null}
       </div>
     </div>
+  );
+}
+
+function HighlightedText({ text, query, className = "" }: { text: string; query: string; className?: string }) {
+  const cleanQuery = query.trim();
+  if (!cleanQuery) {
+    return <span className={className}>{text}</span>;
+  }
+
+  const escaped = cleanQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = text.split(new RegExp(`(${escaped})`, "ig"));
+
+  return (
+    <span className={className}>
+      {parts.map((part, index) =>
+        part.toLowerCase() === cleanQuery.toLowerCase() ? (
+          <mark key={`${part}-${index}`} className="rounded-md bg-amber-200/80 px-0.5 text-inherit">
+            {part}
+          </mark>
+        ) : (
+          <span key={`${part}-${index}`}>{part}</span>
+        )
+      )}
+    </span>
   );
 }
