@@ -28,6 +28,11 @@
           "$entryId": {
             ".validate": "newData.hasChildren(['role','text','createdAt'])"
           }
+        },
+        "ml_learning_samples": {
+          "$sampleId": {
+            ".validate": "newData.hasChildren(['age','gender','height_cm','weight_kg','bmi','heart_rate','systolic_bp','diastolic_bp','steps','recent_weight_delta_kg','recent_bmi_delta','recent_heart_rate_delta','recent_systolic_delta','recent_diastolic_delta','recent_steps_delta','recent_meal_calorie_delta','recent_hydration_delta','recent_sleep_hours_delta','recent_activity_calorie_delta','label','label_name','support','confidence','source','approval_status','created_at','updated_at']) && newData.child('source').isString() && (newData.child('source').val() == 'prediction' || newData.child('source').val() == 'chat' || newData.child('source').val() == 'manual') && newData.child('approval_status').isString() && (newData.child('approval_status').val() == 'approved' || newData.child('approval_status').val() == 'pending' || newData.child('approval_status').val() == 'rejected')"
+          }
         }
       }
     },
@@ -68,7 +73,14 @@
       ".write": "auth != null",
       "global": {
         "$sampleId": {
-          ".validate": "newData.hasChildren(['age','gender','height_cm','weight_kg','bmi','heart_rate','systolic_bp','diastolic_bp','steps','label','label_name','support','confidence','source','created_at']) && newData.child('source').isString() && (newData.child('source').val() == 'prediction' || newData.child('source').val() == 'chat' || newData.child('source').val() == 'manual')"
+          ".validate": "newData.hasChildren(['age','gender','height_cm','weight_kg','bmi','heart_rate','systolic_bp','diastolic_bp','steps','recent_weight_delta_kg','recent_bmi_delta','recent_heart_rate_delta','recent_systolic_delta','recent_diastolic_delta','recent_steps_delta','recent_meal_calorie_delta','recent_hydration_delta','recent_sleep_hours_delta','recent_activity_calorie_delta','label','label_name','support','confidence','source','approval_status','created_at','updated_at']) && newData.child('source').isString() && (newData.child('source').val() == 'prediction' || newData.child('source').val() == 'chat' || newData.child('source').val() == 'manual') && newData.child('approval_status').isString() && (newData.child('approval_status').val() == 'approved' || newData.child('approval_status').val() == 'pending' || newData.child('approval_status').val() == 'rejected')"
+        }
+      },
+      "$uid": {
+        "ml_learning_samples": {
+          "$sampleId": {
+            ".validate": "newData.hasChildren(['age','gender','height_cm','weight_kg','bmi','heart_rate','systolic_bp','diastolic_bp','steps','recent_weight_delta_kg','recent_bmi_delta','recent_heart_rate_delta','recent_systolic_delta','recent_diastolic_delta','recent_steps_delta','recent_meal_calorie_delta','recent_hydration_delta','recent_sleep_hours_delta','recent_activity_calorie_delta','label','label_name','support','confidence','source','approval_status','created_at','updated_at']) && newData.child('source').isString() && (newData.child('source').val() == 'prediction' || newData.child('source').val() == 'chat' || newData.child('source').val() == 'manual') && newData.child('approval_status').isString() && (newData.child('approval_status').val() == 'approved' || newData.child('approval_status').val() == 'pending' || newData.child('approval_status').val() == 'rejected')"
+          }
         }
       }
     },

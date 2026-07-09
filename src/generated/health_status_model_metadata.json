@@ -9,19 +9,29 @@
     "heart_rate",
     "systolic_bp",
     "diastolic_bp",
-    "steps"
+    "steps",
+    "recent_weight_delta_kg",
+    "recent_bmi_delta",
+    "recent_heart_rate_delta",
+    "recent_systolic_delta",
+    "recent_diastolic_delta",
+    "recent_steps_delta",
+    "recent_meal_calorie_delta",
+    "recent_hydration_delta",
+    "recent_sleep_hours_delta",
+    "recent_activity_calorie_delta"
   ],
   "target": "health_status",
-  "training_date": "2026-07-08T19:58:26.748530+00:00",
-  "accuracy": 0.983333,
+  "training_date": "2026-07-09T03:14:53.070865+00:00",
+  "accuracy": 0.972222,
   "dataset_rows": 900,
   "class_distribution": {
-    "0": 308,
-    "1": 292,
+    "0": 307,
+    "1": 293,
     "2": 300
   },
   "best_parameters": {
-    "n_neighbors": 3,
+    "n_neighbors": 5,
     "weights": "distance",
     "metric": "minkowski",
     "p": 1,
@@ -29,22 +39,22 @@
   },
   "comparison_models": {
     "DecisionTreeClassifier": {
-      "accuracy": 0.994444,
-      "precision": 0.99435,
-      "recall": 0.994624,
-      "f1_score": 0.994441,
-      "cv_mean_accuracy": 0.978889,
-      "cv_std_accuracy": 0.014657
+      "accuracy": 0.972222,
+      "precision": 0.973958,
+      "recall": 0.972495,
+      "f1_score": 0.972397,
+      "cv_mean_accuracy": 0.971111,
+      "cv_std_accuracy": 0.008165
     }
   },
   "cross_validation": {
     "KNeighborsClassifier": {
-      "mean_accuracy": 0.983333,
-      "std_accuracy": 0.006086
+      "mean_accuracy": 0.985556,
+      "std_accuracy": 0.008315
     },
     "DecisionTreeClassifier": {
-      "mean_accuracy": 0.978889,
-      "std_accuracy": 0.014657
+      "mean_accuracy": 0.971111,
+      "std_accuracy": 0.008165
     }
   },
   "label_mapping": {

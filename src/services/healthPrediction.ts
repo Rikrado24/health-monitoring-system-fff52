@@ -2,26 +2,25 @@ import { addDoc, collection } from "firebase/firestore";
 import knnExport from "../generated/health_status_knn.json";
 import modelMetadata from "../generated/health_status_model_metadata.json";
 import labelMapping from "../generated/label_mapping.json";
+import {
+  createHealthPredictionVector,
+  sanitizeHealthPredictionInput,
+  type HealthPredictionFeatures,
+} from "./healthFeatureEngineering";
 import type { HealthPredictionDoc } from "../types/storage";
 import { db } from "./firebase";
-import { getHealthLearningSamples, recordHealthLearningSample } from "./healthLearning";
+import { getHealthLearningSamples, recordHealthLearningSample, type HealthLearningSample } from "./healthLearning";
 
-type PredictionInput = {
-  age: number;
-  gender: number;
-  height_cm: number;
-  weight_kg: number;
-  bmi: number;
-  heart_rate: number;
-  systolic_bp: number;
-  diastolic_bp: number;
-  steps: number;
-};
+type PredictionInput = HealthPredictionFeatures;
 
 type KnnSample = {
   values: number[];
   label: number;
   support?: number;
+};
+
+type WeightedMemorySample = HealthLearningSample & {
+  values: number[];
 };
 
 type KnnScaler = {
@@ -98,57 +97,36 @@ const deriveRuleBasedHealthStatus = (input: PredictionInput) => {
     input.age >= 70,
   ];
 
-  if (riskWindows.filter(Boolean).length >= 2) return 2;
-  if (healthyWindows.filter(Boolean).length >= 5) return 0;
+  const improvingTrendWindows = [
+    input.recent_weight_delta_kg <= 0.5,
+    input.recent_bmi_delta <= 0.2,
+    input.recent_heart_rate_delta <= 5,
+    input.recent_systolic_delta <= 5,
+    input.recent_diastolic_delta <= 4,
+    input.recent_steps_delta >= -1500,
+    input.recent_meal_calorie_delta <= 300,
+    input.recent_hydration_delta >= -2,
+    input.recent_sleep_hours_delta >= -0.8,
+    input.recent_activity_calorie_delta >= -120,
+  ];
+
+  const worseningTrendWindows = [
+    input.recent_weight_delta_kg >= 1.2,
+    input.recent_bmi_delta >= 0.6,
+    input.recent_heart_rate_delta >= 8,
+    input.recent_systolic_delta >= 8,
+    input.recent_diastolic_delta >= 6,
+    input.recent_steps_delta <= -2200,
+    input.recent_meal_calorie_delta >= 400,
+    input.recent_hydration_delta <= -3,
+    input.recent_sleep_hours_delta <= -1,
+    input.recent_activity_calorie_delta <= -160,
+  ];
+
+  if (riskWindows.filter(Boolean).length >= 2 || worseningTrendWindows.filter(Boolean).length >= 4) return 2;
+  if (healthyWindows.filter(Boolean).length >= 5 && improvingTrendWindows.filter(Boolean).length >= 6) return 0;
   return 1;
 };
-
-const normalizeNumber = (value: unknown) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const normalizeGenderCode = (value: unknown) => {
-  if (typeof value === "number") return value === 1 ? 1 : 0;
-  const text = String(value ?? "").trim().toLowerCase();
-  if (["1", "l", "m", "male", "pria", "laki-laki", "laki laki", "laki"].includes(text)) return 1;
-  return 0;
-};
-
-const computeBmi = (heightCm: number, weightKg: number) => {
-  if (heightCm <= 0 || weightKg <= 0) return 0;
-  return Number((weightKg / Math.pow(heightCm / 100, 2)).toFixed(1));
-};
-
-const sanitizeInput = (input: Partial<PredictionInput> & { gender?: number | string }) => {
-  const height_cm = normalizeNumber(input.height_cm);
-  const weight_kg = normalizeNumber(input.weight_kg);
-  const bmiValue = normalizeNumber(input.bmi);
-
-  return {
-    age: Math.max(0, Math.round(normalizeNumber(input.age))),
-    gender: normalizeGenderCode(input.gender),
-    height_cm: Number(height_cm.toFixed(1)),
-    weight_kg: Number(weight_kg.toFixed(1)),
-    bmi: bmiValue > 0 ? Number(bmiValue.toFixed(1)) : computeBmi(height_cm, weight_kg),
-    heart_rate: Math.max(0, Number(normalizeNumber(input.heart_rate).toFixed(1))),
-    systolic_bp: Math.max(0, Number(normalizeNumber(input.systolic_bp).toFixed(1))),
-    diastolic_bp: Math.max(0, Number(normalizeNumber(input.diastolic_bp).toFixed(1))),
-    steps: Math.max(0, Number(normalizeNumber(input.steps).toFixed(1))),
-  };
-};
-
-const createFeatureVector = (input: PredictionInput) => [
-  input.age,
-  input.gender,
-  input.height_cm,
-  input.weight_kg,
-  input.bmi,
-  input.heart_rate,
-  input.systolic_bp,
-  input.diastolic_bp,
-  input.steps,
-];
 
 const standardizeVector = (values: number[], scaler: KnnScaler) =>
   values.map((value, index) => {
@@ -168,13 +146,49 @@ const minkowskiDistance = (left: number[], right: number[], p: number) => {
   return Math.pow(sum, 1 / power);
 };
 
+const SOURCE_WEIGHTS: Record<"prediction" | "chat" | "manual", number> = {
+  prediction: 1,
+  chat: 0.9,
+  manual: 1.08,
+};
+
+const SCOPE_WEIGHTS: Record<"global" | "personal", number> = {
+  global: 0.74,
+  personal: 1.42,
+};
+
+const getRecencyWeight = (createdAt?: string) => {
+  if (!createdAt) return 1;
+  const created = new Date(createdAt);
+  if (Number.isNaN(created.getTime())) return 1;
+  const ageDays = Math.max(0, (Date.now() - created.getTime()) / 86400000);
+  if (ageDays <= 3) return 1.18;
+  if (ageDays <= 14) return 1.1;
+  if (ageDays <= 45) return 1.02;
+  if (ageDays <= 120) return 0.95;
+  return 0.88;
+};
+
+const getSampleWeight = (sample: {
+  support?: number;
+  source?: "prediction" | "chat" | "manual";
+  scope?: "global" | "personal";
+  createdAt?: string;
+}) => {
+  const supportWeight = Math.max(1, Number(sample.support || 1));
+  const sourceWeight = sample.source ? SOURCE_WEIGHTS[sample.source] || 1 : 1;
+  const scopeWeight = sample.scope ? SCOPE_WEIGHTS[sample.scope] || 1 : 1;
+  const recencyWeight = getRecencyWeight(sample.createdAt);
+  return supportWeight * sourceWeight * scopeWeight * recencyWeight;
+};
+
 const predictWithKnn = (input: PredictionInput) => {
-  const featureVector = createFeatureVector(input);
+  const featureVector = createHealthPredictionVector(input);
   const standardizedInput = standardizeVector(featureVector, KNN.scaler);
   const memorySamples = getHealthLearningSamples().map((sample) => ({
     ...sample,
     values: standardizeVector(sample.values, KNN.scaler),
-  }));
+  })) as WeightedMemorySample[];
   const baseSamples = Array.isArray(KNN.samples) ? KNN.samples : [];
   const samples = [...baseSamples, ...memorySamples];
   const k = Math.max(1, Math.min(Number(KNN.k) || 3, samples.length || 1));
@@ -193,7 +207,7 @@ const predictWithKnn = (input: PredictionInput) => {
   const scoredSamples = samples
     .map((sample) => ({
       label: sample.label,
-      support: Math.max(1, Number(sample.support || 1)),
+      support: getSampleWeight(sample),
       distance: minkowskiDistance(standardizedInput, sample.values, KNN.p || 1),
     }))
     .sort((left, right) => left.distance - right.distance)
@@ -261,11 +275,11 @@ export const getHealthModelMetadata = () => ({
 });
 
 export function normalizeHealthPredictionInput(input: Partial<PredictionInput> & { gender?: number | string }) {
-  return sanitizeInput(input);
+  return sanitizeHealthPredictionInput(input);
 }
 
 export function predictHealthStatus(input: Partial<PredictionInput> & { gender?: number | string }): HealthPredictionResult {
-  const sanitized = sanitizeInput(input);
+  const sanitized = sanitizeHealthPredictionInput(input);
   const result = predictWithKnn(sanitized);
   const label = LABELS[String(result.code)] || KNN.class_labels[String(result.code)] || `Class ${result.code}`;
   const confidence = Number((result.confidence || 0).toFixed(4));
@@ -294,6 +308,16 @@ export async function saveHealthPredictionForUser(userUid: string, prediction: H
     systolic_bp: prediction.input.systolic_bp,
     diastolic_bp: prediction.input.diastolic_bp,
     steps: prediction.input.steps,
+    recent_weight_delta_kg: prediction.input.recent_weight_delta_kg,
+    recent_bmi_delta: prediction.input.recent_bmi_delta,
+    recent_heart_rate_delta: prediction.input.recent_heart_rate_delta,
+    recent_systolic_delta: prediction.input.recent_systolic_delta,
+    recent_diastolic_delta: prediction.input.recent_diastolic_delta,
+    recent_steps_delta: prediction.input.recent_steps_delta,
+    recent_meal_calorie_delta: prediction.input.recent_meal_calorie_delta,
+    recent_hydration_delta: prediction.input.recent_hydration_delta,
+    recent_sleep_hours_delta: prediction.input.recent_sleep_hours_delta,
+    recent_activity_calorie_delta: prediction.input.recent_activity_calorie_delta,
     predicted_status: prediction.healthStatusCode,
     predicted_status_label: prediction.healthStatusLabel,
     recommendation: prediction.recommendation,
@@ -316,6 +340,16 @@ export async function saveHealthPredictionForUser(userUid: string, prediction: H
       systolic_bp: prediction.input.systolic_bp,
       diastolic_bp: prediction.input.diastolic_bp,
       steps: prediction.input.steps,
+      recent_weight_delta_kg: prediction.input.recent_weight_delta_kg,
+      recent_bmi_delta: prediction.input.recent_bmi_delta,
+      recent_heart_rate_delta: prediction.input.recent_heart_rate_delta,
+      recent_systolic_delta: prediction.input.recent_systolic_delta,
+      recent_diastolic_delta: prediction.input.recent_diastolic_delta,
+      recent_steps_delta: prediction.input.recent_steps_delta,
+      recent_meal_calorie_delta: prediction.input.recent_meal_calorie_delta,
+      recent_hydration_delta: prediction.input.recent_hydration_delta,
+      recent_sleep_hours_delta: prediction.input.recent_sleep_hours_delta,
+      recent_activity_calorie_delta: prediction.input.recent_activity_calorie_delta,
       label: prediction.healthStatusCode,
       label_name: prediction.healthStatusLabel,
       confidence: prediction.confidence,

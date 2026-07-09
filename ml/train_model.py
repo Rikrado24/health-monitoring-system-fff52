@@ -14,7 +14,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, cross_val_score, train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import RobustScaler, StandardScaler
+from sklearn.preprocessing import RobustScaler
 from sklearn.tree import DecisionTreeClassifier
 
 
@@ -46,6 +46,16 @@ FEATURES = [
     "systolic_bp",
     "diastolic_bp",
     "steps",
+    "recent_weight_delta_kg",
+    "recent_bmi_delta",
+    "recent_heart_rate_delta",
+    "recent_systolic_delta",
+    "recent_diastolic_delta",
+    "recent_steps_delta",
+    "recent_meal_calorie_delta",
+    "recent_hydration_delta",
+    "recent_sleep_hours_delta",
+    "recent_activity_calorie_delta",
 ]
 
 CLASS_LABELS = {
@@ -84,6 +94,16 @@ def derive_label(row: dict[str, float | int]) -> int:
     diastolic = float(row["diastolic_bp"])
     steps = float(row["steps"])
     age = float(row["age"])
+    weight_delta = float(row["recent_weight_delta_kg"])
+    bmi_delta = float(row["recent_bmi_delta"])
+    heart_delta = float(row["recent_heart_rate_delta"])
+    systolic_delta = float(row["recent_systolic_delta"])
+    diastolic_delta = float(row["recent_diastolic_delta"])
+    steps_delta = float(row["recent_steps_delta"])
+    meal_delta = float(row["recent_meal_calorie_delta"])
+    hydration_delta = float(row["recent_hydration_delta"])
+    sleep_delta = float(row["recent_sleep_hours_delta"])
+    activity_delta = float(row["recent_activity_calorie_delta"])
 
     healthy_windows = [
         18.5 <= bmi <= 24.9,
@@ -103,10 +123,36 @@ def derive_label(row: dict[str, float | int]) -> int:
         age >= 70,
     ]
 
-    if sum(risk_windows) >= 2:
+    trend_improving = [
+        weight_delta <= 0.5,
+        bmi_delta <= 0.2,
+        heart_delta <= 5,
+        systolic_delta <= 5,
+        diastolic_delta <= 4,
+        steps_delta >= -1500,
+        meal_delta <= 300,
+        hydration_delta >= -2,
+        sleep_delta >= -0.8,
+        activity_delta >= -120,
+    ]
+
+    trend_worsening = [
+        weight_delta >= 1.2,
+        bmi_delta >= 0.6,
+        heart_delta >= 8,
+        systolic_delta >= 8,
+        diastolic_delta >= 6,
+        steps_delta <= -2200,
+        meal_delta >= 400,
+        hydration_delta <= -3,
+        sleep_delta <= -1,
+        activity_delta <= -160,
+    ]
+
+    if sum(risk_windows) >= 2 or sum(trend_worsening) >= 4:
         return 2
 
-    if sum(healthy_windows) >= 5:
+    if sum(healthy_windows) >= 5 and sum(trend_improving) >= 6:
         return 0
 
     return 1
@@ -176,6 +222,47 @@ def sample_steps(rng: random.Random, status: int) -> int:
     return rng.randint(0, 4300)
 
 
+def sample_trend_features(rng: random.Random, status: int) -> dict[str, float | int]:
+    if status == 0:
+        return {
+            "recent_weight_delta_kg": round(rng.uniform(-0.6, 0.4), 1),
+            "recent_bmi_delta": round(rng.uniform(-0.3, 0.2), 1),
+            "recent_heart_rate_delta": rng.randint(-4, 4),
+            "recent_systolic_delta": rng.randint(-4, 4),
+            "recent_diastolic_delta": rng.randint(-3, 3),
+            "recent_steps_delta": rng.randint(-1200, 1800),
+            "recent_meal_calorie_delta": rng.randint(-180, 180),
+            "recent_hydration_delta": rng.randint(-1, 2),
+            "recent_sleep_hours_delta": round(rng.uniform(-0.6, 0.8), 1),
+            "recent_activity_calorie_delta": rng.randint(-80, 90),
+        }
+    if status == 1:
+        return {
+            "recent_weight_delta_kg": round(rng.uniform(-0.2, 1.0), 1),
+            "recent_bmi_delta": round(rng.uniform(-0.1, 0.5), 1),
+            "recent_heart_rate_delta": rng.randint(-2, 8),
+            "recent_systolic_delta": rng.randint(-2, 8),
+            "recent_diastolic_delta": rng.randint(-2, 6),
+            "recent_steps_delta": rng.randint(-2200, 800),
+            "recent_meal_calorie_delta": rng.randint(-50, 400),
+            "recent_hydration_delta": rng.randint(-2, 1),
+            "recent_sleep_hours_delta": round(rng.uniform(-1.0, 0.5), 1),
+            "recent_activity_calorie_delta": rng.randint(-120, 60),
+        }
+    return {
+        "recent_weight_delta_kg": round(rng.uniform(0.6, 2.6), 1),
+        "recent_bmi_delta": round(rng.uniform(0.4, 1.8), 1),
+        "recent_heart_rate_delta": rng.randint(6, 18),
+        "recent_systolic_delta": rng.randint(6, 20),
+        "recent_diastolic_delta": rng.randint(4, 14),
+        "recent_steps_delta": rng.randint(-4200, 1000),
+        "recent_meal_calorie_delta": rng.randint(180, 650),
+        "recent_hydration_delta": rng.randint(-4, 1),
+        "recent_sleep_hours_delta": round(rng.uniform(-2.0, 0.2), 1),
+        "recent_activity_calorie_delta": rng.randint(-220, 40),
+    }
+
+
 def sample_age(rng: random.Random, status: int) -> int:
     if status == 0:
         return rng.randint(18, 59)
@@ -194,6 +281,7 @@ def generate_row(rng: random.Random, status: int) -> dict[str, float | int]:
     heart_rate = sample_heart_rate(rng, status)
     systolic_bp, diastolic_bp = sample_blood_pressure(rng, status)
     steps = sample_steps(rng, status)
+    trend_features = sample_trend_features(rng, status)
 
     row = {
         "age": age,
@@ -205,6 +293,7 @@ def generate_row(rng: random.Random, status: int) -> dict[str, float | int]:
         "systolic_bp": systolic_bp,
         "diastolic_bp": diastolic_bp,
         "steps": steps,
+        **trend_features,
     }
 
     row["health_status"] = derive_label(row)
@@ -432,27 +521,27 @@ def main() -> None:
 
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-    knn = Pipeline(
-        steps=[
-            ("scaler", RobustScaler()),
-            ("knn", KNeighborsClassifier(n_neighbors=3, weights="distance", p=1)),
-        ]
-    )
-    knn.fit(X_train, y_train)
-    knn_predictions = knn.predict(X_test)
-    knn_probability = knn.predict_proba(X_test)
-    knn_cv_scores = cross_val_score(
-        Pipeline(
+    knn_search = GridSearchCV(
+        estimator=Pipeline(
             steps=[
                 ("scaler", RobustScaler()),
-                ("knn", KNeighborsClassifier(n_neighbors=3, weights="distance", p=1)),
+                ("knn", KNeighborsClassifier()),
             ]
         ),
-        X,
-        y,
+        param_grid={
+            "knn__n_neighbors": [3, 5, 7, 9],
+            "knn__weights": ["distance", "uniform"],
+            "knn__p": [1, 2],
+        },
         cv=cv,
         scoring="accuracy",
+        n_jobs=-1,
     )
+    knn_search.fit(X_train, y_train)
+    knn = knn_search.best_estimator_
+    knn_predictions = knn.predict(X_test)
+    knn_probability = knn.predict_proba(X_test)
+    knn_cv_scores = cross_val_score(knn, X, y, cv=cv, scoring="accuracy")
 
     tree_search = GridSearchCV(
         estimator=DecisionTreeClassifier(random_state=42, class_weight="balanced"),
@@ -539,10 +628,10 @@ def main() -> None:
         "dataset_rows": len(rows),
         "class_distribution": {str(key): value for key, value in dataset_distribution.items()},
         "best_parameters": {
-            "n_neighbors": 3,
-            "weights": "distance",
+            "n_neighbors": int(knn_search.best_params_.get("knn__n_neighbors", 3)),
+            "weights": str(knn_search.best_params_.get("knn__weights", "distance")),
             "metric": "minkowski",
-            "p": 1,
+            "p": int(knn_search.best_params_.get("knn__p", 1)),
             "scaler": "RobustScaler",
         },
         "comparison_models": {

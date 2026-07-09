@@ -32,8 +32,13 @@ import {
   saveHealthPredictionForUser,
 } from "../services/healthPrediction";
 import {
+  approveHealthLearningSample,
+  deleteHealthLearningSample,
   loadHealthLearningSamplesForUser,
+  loadHealthLearningSampleEntriesForUser,
+  rejectHealthLearningSample,
   subscribeHealthLearningSamplesForUser,
+  type HealthLearningSampleEntry,
 } from "../services/healthLearning";
 import {
   formatLocalDate,
@@ -88,6 +93,7 @@ const MENU_NAV_ITEMS: ReadonlyArray<{
   { menu: "Pengingat & Alarm", label: "Pengingat & Alarm", shortLabel: "Ingat", icon: "fa-bell", description: "Atur pengingat kesehatan harian" },
   { menu: "Pengaturan", label: "Pengaturan", shortLabel: "Atur", icon: "fa-gear", description: "Kelola profil dan preferensi akun" },
 ] as const;
+const ADMIN_MEMORY_EMAIL = "ireniusrikardo71@gmail.com";
 const DEFAULT_DEVICE_ID = "ESP32-S3-UNO-01";
 const DEFAULT_DEVICE_WRITE_KEY = "KEY-B48D2CD66FE74190A917";
 const RIWAYAT_FILTER_OPTIONS = [
@@ -138,6 +144,10 @@ type SpeechRecognitionInstanceLike = {
 };
 
 type SpeechRecognitionConstructorLike = new () => SpeechRecognitionInstanceLike;
+
+type DashboardMenu = CoreMenuItem | "Memori Belajar";
+
+type LearningMemoryPanelFilter = "Semua" | "Approved" | "Pending" | "Rejected";
 
 type EditableProfile = {
   fullName: string;
@@ -446,7 +456,7 @@ const generateDeviceWriteKey = () => {
 };
 
 export default function Dashboard({ latest, userDisplayName, userUid, userEmail, onSignOut }: DashboardProps) {
-  const [activeMenu, setActiveMenu] = useState<CoreMenuItem>("Dashboard");
+  const [activeMenu, setActiveMenu] = useState<DashboardMenu>("Dashboard");
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false
   );
@@ -576,6 +586,11 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const [historyEventDocs, setHistoryEventDocs] = useState<Array<HistoryEventDoc & { id: string }>>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyResetting, setHistoryResetting] = useState(false);
+  const [learningMemoryEntries, setLearningMemoryEntries] = useState<HealthLearningSampleEntry[]>([]);
+  const [learningMemoryLoading, setLearningMemoryLoading] = useState(false);
+  const [learningMemoryAction, setLearningMemoryAction] = useState("");
+  const [learningMemoryFilter, setLearningMemoryFilter] = useState<LearningMemoryPanelFilter>("Semua");
+  const [learningMemorySearch, setLearningMemorySearch] = useState("");
   const [notificationSettings, setNotificationSettings] = useState<Record<string, boolean>>({
     "Pengingat Minum Air": true,
     "Pengingat Aktivitas": true,
@@ -644,8 +659,16 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   const [draftProfile, setDraftProfile] = useState(profile);
   const name = profile.fullName.trim() || initialName;
   const profileMetaLine = [profile.gender, profile.age ? `${profile.age} tahun` : ""].filter(Boolean).join(" - ") || "-";
-  const menuItems = MENU_NAV_ITEMS;
-  const mobileBottomNav = MENU_NAV_ITEMS;
+  const currentEmail = (userEmail || profile.email || "").trim().toLowerCase();
+  const isMemoryAdmin = currentEmail === ADMIN_MEMORY_EMAIL;
+  const menuItems = useMemo(
+    () =>
+      isMemoryAdmin
+        ? [...MENU_NAV_ITEMS, { menu: "Memori Belajar", label: "Memori Belajar", shortLabel: "Memori", icon: "fa-shield-heart", description: "Kelola sampel memori belajar" }]
+        : [...MENU_NAV_ITEMS],
+    [isMemoryAdmin]
+  );
+  const mobileBottomNav = menuItems;
   const supportContact = {
     email: "ireniusrikardo71@gmail.com",
     phone: "081335664527",
@@ -1590,6 +1613,61 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
 
     return notes.join("; ");
   })();
+  const historyTrendFeatures = useMemo(() => {
+    const measurementRecords = measurementHistoryDb.filter(
+      (entry) => Number(entry.berat_badan) > 0 || Number(entry.bmi) > 0 || Number(entry.detak_jantung) > 0 || Number(entry.sistolik) > 0 || Number(entry.diastolik) > 0
+    );
+    const latestMeasurement = measurementRecords[0] || null;
+    const previousMeasurement = measurementRecords[1] || null;
+    const latestMeasurementBmi = latestMeasurement
+      ? Number(latestMeasurement.bmi) > 0
+        ? Number(latestMeasurement.bmi)
+        : Number(latestMeasurement.tinggi_badan) > 0 && Number(latestMeasurement.berat_badan) > 0
+          ? Number((Number(latestMeasurement.berat_badan) / Math.pow(Number(latestMeasurement.tinggi_badan) / 100, 2)).toFixed(1))
+          : 0
+      : 0;
+    const previousMeasurementBmi = previousMeasurement
+      ? Number(previousMeasurement.bmi) > 0
+        ? Number(previousMeasurement.bmi)
+        : Number(previousMeasurement.tinggi_badan) > 0 && Number(previousMeasurement.berat_badan) > 0
+          ? Number((Number(previousMeasurement.berat_badan) / Math.pow(Number(previousMeasurement.tinggi_badan) / 100, 2)).toFixed(1))
+          : 0
+      : 0;
+    const latestSleepRecords = historyEventDocs.filter((entry) => entry.dataType === "Tidur").slice(0, 2);
+    const latestSleepHours = latestSleepRecords[0] ? parseSleepDurationMinutes(latestSleepRecords[0].value) / 60 : 0;
+    const previousSleepHours = latestSleepRecords[1] ? parseSleepDurationMinutes(latestSleepRecords[1].value) / 60 : 0;
+    const todayMealTotals = mealDailyTotals.get(currentDayKey) || { calories: 0, count: 0 };
+    const yesterdayMealTotals = mealDailyTotals.get(previousDayKey) || { calories: 0, count: 0 };
+    const todayHydrationTotals = hydrationDailyTotals.get(currentDayKey) || { glasses: 0, count: 0 };
+    const yesterdayHydrationTotals = hydrationDailyTotals.get(previousDayKey) || { glasses: 0, count: 0 };
+    const todayActivityTotals = activityDailyTotals.get(currentDayKey) || { steps: 0, distanceM: 0, calories: 0, durationSec: 0, count: 0 };
+    const yesterdayActivityTotals = activityDailyTotals.get(previousDayKey) || { steps: 0, distanceM: 0, calories: 0, durationSec: 0, count: 0 };
+
+    return {
+      recent_weight_delta_kg:
+        latestMeasurement && previousMeasurement && Number(latestMeasurement.berat_badan) > 0 && Number(previousMeasurement.berat_badan) > 0
+          ? Number((Number(latestMeasurement.berat_badan) - Number(previousMeasurement.berat_badan)).toFixed(1))
+          : 0,
+      recent_bmi_delta: latestMeasurementBmi > 0 && previousMeasurementBmi > 0 ? Number((latestMeasurementBmi - previousMeasurementBmi).toFixed(1)) : 0,
+      recent_heart_rate_delta:
+        latestMeasurement && previousMeasurement && Number(latestMeasurement.detak_jantung) > 0 && Number(previousMeasurement.detak_jantung) > 0
+          ? Number((Number(latestMeasurement.detak_jantung) - Number(previousMeasurement.detak_jantung)).toFixed(1))
+          : 0,
+      recent_systolic_delta:
+        latestMeasurement && previousMeasurement && Number(latestMeasurement.sistolik) > 0 && Number(previousMeasurement.sistolik) > 0
+          ? Number((Number(latestMeasurement.sistolik) - Number(previousMeasurement.sistolik)).toFixed(1))
+          : 0,
+      recent_diastolic_delta:
+        latestMeasurement && previousMeasurement && Number(latestMeasurement.diastolik) > 0 && Number(previousMeasurement.diastolik) > 0
+          ? Number((Number(latestMeasurement.diastolik) - Number(previousMeasurement.diastolik)).toFixed(1))
+          : 0,
+      recent_steps_delta: Number((Number(todayActivityTotals.steps || 0) - Number(yesterdayActivityTotals.steps || 0)).toFixed(1)),
+      recent_meal_calorie_delta: Number((Number(todayMealTotals.calories || 0) - Number(yesterdayMealTotals.calories || 0)).toFixed(1)),
+      recent_hydration_delta: Number((Number(todayHydrationTotals.glasses || 0) - Number(yesterdayHydrationTotals.glasses || 0)).toFixed(1)),
+      recent_sleep_hours_delta: latestSleepHours > 0 && previousSleepHours > 0 ? Number((latestSleepHours - previousSleepHours).toFixed(1)) : 0,
+      recent_activity_calorie_delta: Number((Number(todayActivityTotals.calories || 0) - Number(yesterdayActivityTotals.calories || 0)).toFixed(1)),
+    };
+  }, [activityDailyTotals, currentDayKey, historyEventDocs, hydrationDailyTotals, mealDailyTotals, measurementHistoryDb, previousDayKey]);
   const prioritySummary = (() => {
     const items = [
       {
@@ -1691,6 +1769,16 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     sleepHours,
     sleepStatus,
     sleepHistorySummary: recentSleepHistorySummary,
+    recentWeightDeltaKg: historyTrendFeatures.recent_weight_delta_kg,
+    recentBmiDelta: historyTrendFeatures.recent_bmi_delta,
+    recentHeartRateDelta: historyTrendFeatures.recent_heart_rate_delta,
+    recentSystolicDelta: historyTrendFeatures.recent_systolic_delta,
+    recentDiastolicDelta: historyTrendFeatures.recent_diastolic_delta,
+    recentStepsDelta: historyTrendFeatures.recent_steps_delta,
+    recentMealCalorieDelta: historyTrendFeatures.recent_meal_calorie_delta,
+    recentHydrationDelta: historyTrendFeatures.recent_hydration_delta,
+    recentSleepHoursDelta: historyTrendFeatures.recent_sleep_hours_delta,
+    recentActivityCalorieDelta: historyTrendFeatures.recent_activity_calorie_delta,
     recentHistorySummary: [recentTrendSummary, recentMealComparisonSummary, recentHydrationComparisonSummary, recentActivityComparisonSummary, recentMostChangedSummary, recentWeightBmiSummary, recentSleepComparisonSummary, recentHeartRateSummary, recentBloodPressureSummary, recentStepSummary, recentHydrationSummary, recentMeasurementHistorySummary, recentActivityHistorySummary, recentNutritionHistorySummary, recentSleepHistorySummary]
       .filter((item) => item.trim() !== "")
       .join(" | "),
@@ -1794,10 +1882,10 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
   };
 
   useEffect(() => {
-    if (!CORE_MENU_ITEMS.includes(activeMenu)) {
+    if (!menuItems.some((item) => item.menu === activeMenu)) {
       setActiveMenu("Dashboard");
     }
-  }, [activeMenu]);
+  }, [activeMenu, menuItems]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setDeviceStatusTick((value) => value + 1), 60000);
@@ -1833,6 +1921,16 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
       systolic_bp: systolicValue,
       diastolic_bp: diastolicValue,
       steps: Number(steps) || 0,
+      recent_weight_delta_kg: historyTrendFeatures.recent_weight_delta_kg,
+      recent_bmi_delta: historyTrendFeatures.recent_bmi_delta,
+      recent_heart_rate_delta: historyTrendFeatures.recent_heart_rate_delta,
+      recent_systolic_delta: historyTrendFeatures.recent_systolic_delta,
+      recent_diastolic_delta: historyTrendFeatures.recent_diastolic_delta,
+      recent_steps_delta: historyTrendFeatures.recent_steps_delta,
+      recent_meal_calorie_delta: historyTrendFeatures.recent_meal_calorie_delta,
+      recent_hydration_delta: historyTrendFeatures.recent_hydration_delta,
+      recent_sleep_hours_delta: historyTrendFeatures.recent_sleep_hours_delta,
+      recent_activity_calorie_delta: historyTrendFeatures.recent_activity_calorie_delta,
     };
 
     const isReady =
@@ -1876,6 +1974,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     displayedDiastolic,
     displayedSystolic,
     heartRate,
+    historyTrendFeatures,
     profile.age,
     profile.birthDate,
     profile.gender,
@@ -1897,6 +1996,39 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     });
   }, [storageReady, userUid]);
 
+  useEffect(() => {
+    if (!menuItems.some((item) => item.menu === activeMenu)) {
+      setActiveMenu("Dashboard");
+    }
+  }, [activeMenu, menuItems]);
+
+  useEffect(() => {
+    if (!isMemoryAdmin || !userUid || !storageReady) {
+      setLearningMemoryEntries([]);
+      return;
+    }
+
+    let mounted = true;
+    const syncAdminMemory = async () => {
+      setLearningMemoryLoading(true);
+      try {
+        const entries = await loadHealthLearningSampleEntriesForUser(userUid);
+        if (mounted) {
+          setLearningMemoryEntries(entries);
+        }
+      } catch (error) {
+        console.error("loadHealthLearningSampleEntriesForUser failed", error);
+      } finally {
+        if (mounted) setLearningMemoryLoading(false);
+      }
+    };
+
+    void syncAdminMemory();
+    return () => {
+      mounted = false;
+    };
+  }, [isMemoryAdmin, storageReady, userUid]);
+
   const selectedHelpArticle = activeHelpArticle ? helpArticles[activeHelpArticle] : null;
 
   const manualValue = (value: string | number, unit: string) => (
@@ -1913,6 +2045,87 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
     setToast(message);
     window.setTimeout(() => setToast(""), 2200);
   };
+
+  const refreshLearningMemory = async () => {
+    if (!userUid || !isMemoryAdmin) return;
+    setLearningMemoryLoading(true);
+    try {
+      const entries = await loadHealthLearningSampleEntriesForUser(userUid);
+      setLearningMemoryEntries(entries);
+    } catch (error) {
+      console.error("refreshLearningMemory failed", error);
+      notify("Gagal memuat memori belajar.");
+    } finally {
+      setLearningMemoryLoading(false);
+    }
+  };
+
+  const handleLearningMemoryAction = async (entry: HealthLearningSampleEntry, action: "approve" | "reject" | "delete") => {
+    if (!isMemoryAdmin || !currentEmail) return;
+    setLearningMemoryAction(entry.path);
+    try {
+      if (action === "approve") {
+        await approveHealthLearningSample(entry, currentEmail);
+        notify("Sampel berhasil di-approve.");
+      } else if (action === "reject") {
+        await rejectHealthLearningSample(entry, currentEmail);
+        notify("Sampel ditandai rejected.");
+      } else {
+        await deleteHealthLearningSample(entry);
+        notify("Sampel dihapus dari memori.");
+      }
+      await refreshLearningMemory();
+    } catch (error) {
+      console.error("handleLearningMemoryAction failed", error);
+      notify("Aksi memori belajar gagal.");
+    } finally {
+      setLearningMemoryAction("");
+    }
+  };
+
+  const visibleLearningMemoryEntries = useMemo(
+    () => {
+      const query = learningMemorySearch.trim().toLowerCase();
+
+      return learningMemoryEntries.filter((entry) => {
+        const matchesFilter =
+          learningMemoryFilter === "Semua"
+            ? true
+            : learningMemoryFilter === "Approved"
+              ? entry.approvalStatus === "approved"
+              : learningMemoryFilter === "Pending"
+                ? entry.approvalStatus === "pending"
+                : entry.approvalStatus === "rejected";
+
+        if (!matchesFilter) return false;
+        if (!query) return true;
+
+        const searchable = [
+          entry.labelName,
+          entry.key,
+          entry.path,
+          entry.source,
+          entry.scope,
+          entry.approvalStatus,
+          entry.uid || "",
+          entry.note || "",
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        return searchable.includes(query);
+      });
+    },
+    [learningMemoryEntries, learningMemoryFilter, learningMemorySearch]
+  );
+  const learningMemoryStats = useMemo(() => {
+    const approved = learningMemoryEntries.filter((entry) => entry.approvalStatus === "approved").length;
+    const pending = learningMemoryEntries.filter((entry) => entry.approvalStatus === "pending").length;
+    const rejected = learningMemoryEntries.filter((entry) => entry.approvalStatus === "rejected").length;
+    const personal = learningMemoryEntries.filter((entry) => entry.scope === "personal").length;
+    const global = learningMemoryEntries.filter((entry) => entry.scope === "global").length;
+    return { approved, pending, rejected, personal, global };
+  }, [learningMemoryEntries]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -3881,7 +4094,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                 <button
                   key={item.menu}
                   type="button"
-                  onClick={() => setActiveMenu(item.menu)}
+                  onClick={() => setActiveMenu(item.menu as DashboardMenu)}
                   className={`group w-full rounded-[22px] border px-3.5 py-3 text-left transition-all duration-300 ease-out ${
                     activeMenu === item.menu
                       ? "border-[#f1d28a] bg-[linear-gradient(135deg,rgba(255,255,255,0.18)_0%,rgba(242,208,137,0.26)_100%)] shadow-[0_18px_30px_-20px_rgba(0,0,0,0.45)]"
@@ -5766,38 +5979,51 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Machine Learning</p>
                             <h3 className="mt-1 text-base font-black text-slate-900 sm:text-lg">Prediksi Status Kesehatan</h3>
                           </div>
-                          <span className="rounded-full bg-violet-50 px-3 py-1 text-[11px] font-black text-violet-700">KNN</span>
+                          <span className={`rounded-full px-3 py-1 text-[11px] font-black ${healthPrediction ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                            {healthPrediction ? `${Math.round(healthPrediction.confidence * 100)}% yakin` : "Menunggu data"}
+                          </span>
                         </div>
-                        <div className="mt-4 space-y-3 rounded-2xl border border-[#edf2f5] bg-slate-50/70 p-4">
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Hasil Prediksi</p>
-                            <p className="mt-1 text-2xl font-black text-slate-900">
-                              {healthPrediction ? healthPrediction.healthStatusLabel : "Menunggu data yang cukup"}
-                            </p>
-                            <p className="mt-1 text-sm leading-6 text-slate-600">
-                              {healthPrediction
-                                ? healthPrediction.recommendation
-                                : "Model akan membaca usia, gender, tinggi, berat, BMI, detak jantung, tekanan darah, dan langkah harian."}
-                            </p>
-                            <p className="mt-2 text-[12px] leading-5 text-slate-500">
-                              Prediksi ini untuk dukungan skripsi dan pemantauan awal, bukan diagnosis medis.
-                            </p>
+                        <div className="mt-4 rounded-[26px] border border-[#dfece4] bg-[linear-gradient(180deg,#fbfffd_0%,#f4fbf7_100%)] p-4 shadow-[0_16px_30px_-28px_rgba(15,23,42,0.18)]">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-600">Hasil Prediksi KNN</p>
+                              <p className="mt-1 text-2xl font-black text-slate-900">
+                                {healthPrediction ? healthPrediction.healthStatusLabel : "Menunggu data yang cukup"}
+                              </p>
+                              <p className="mt-2 text-sm leading-6 text-slate-600">
+                                {healthPrediction
+                                  ? healthPrediction.recommendation
+                                  : "Model membaca usia, gender, tinggi, berat, BMI, detak jantung, tekanan darah, langkah, dan tren riwayat terbaru."}
+                              </p>
+                            </div>
+                            <div className="shrink-0 rounded-2xl bg-white px-3 py-2 text-right shadow-sm">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Confidence</p>
+                              <p className="mt-1 text-lg font-black text-emerald-700">{healthPrediction ? `${Math.round(healthPrediction.confidence * 100)}%` : "-"}</p>
+                            </div>
                           </div>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <div className="rounded-xl bg-white px-3 py-2">
+
+                          <div className="mt-4 h-2 overflow-hidden rounded-full bg-emerald-100">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 transition-all"
+                              style={{ width: healthPrediction ? `${Math.max(6, Math.round(healthPrediction.confidence * 100))}%` : "0%" }}
+                            />
+                          </div>
+
+                          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                            <div className="rounded-2xl bg-white px-3 py-2">
                               <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Model</p>
                               <p className="mt-1 text-sm font-black text-slate-900">{HEALTH_MODEL_METADATA.modelName}</p>
                             </div>
-                            <div className="rounded-xl bg-white px-3 py-2">
+                            <div className="rounded-2xl bg-white px-3 py-2">
                               <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Akurasi Model</p>
                               <p className="mt-1 text-sm font-black text-slate-900">{(HEALTH_MODEL_METADATA.accuracy * 100).toFixed(2)}%</p>
                             </div>
                           </div>
-                          <div className="rounded-xl bg-white px-3 py-2">
-                            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Confidence</p>
-                            <p className="mt-1 text-sm font-black text-slate-900">
-                              {healthPrediction ? `${(healthPrediction.confidence * 100).toFixed(2)}%` : "-"}
-                            </p>
+
+                          <div className="mt-3 rounded-2xl bg-white px-3 py-2 text-sm leading-6 text-slate-600">
+                            {healthPrediction
+                              ? "Prediksi ini membaca data terbaru dan perubahan riwayat dari berat, BMI, tekanan darah, langkah, hidrasi, pola makan, dan tidur."
+                              : "Menunggu pengukuran lengkap agar prediksi lebih tajam."}
                           </div>
                         </div>
                       </AppCard>
@@ -5887,6 +6113,241 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                     </AppCard>
                   </PageContainer>
                 </>
+              ) : null}
+
+              {activeMenu === "Memori Belajar" ? (
+                <PageContainer className="md:max-w-none md:space-y-4">
+                  <SectionTitle
+                    title="Memori Belajar"
+                    subtitle="Hanya admin yang bisa meninjau sampel belajar, memisahkan data global dan personal, lalu memutuskan approve, reject, atau hapus."
+                    className="px-1 md:hidden"
+                  />
+
+                  <section className="grid gap-4 xl:grid-cols-4">
+                    <AppCard className="p-4 sm:p-5">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Total Sampel</p>
+                      <p className="mt-2 text-3xl font-black text-slate-900">{learningMemoryEntries.length}</p>
+                      <p className="mt-2 text-sm text-slate-500">Semua sampel yang tersimpan di global dan personal.</p>
+                    </AppCard>
+                    <AppCard className="p-4 sm:p-5">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-500">Approved</p>
+                      <p className="mt-2 text-3xl font-black text-emerald-700">{learningMemoryStats.approved}</p>
+                      <p className="mt-2 text-sm text-slate-500">Dipakai langsung oleh KNN saat prediksi.</p>
+                    </AppCard>
+                    <AppCard className="p-4 sm:p-5">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-500">Pending</p>
+                      <p className="mt-2 text-3xl font-black text-amber-600">{learningMemoryStats.pending}</p>
+                      <p className="mt-2 text-sm text-slate-500">Menunggu approval admin sebelum dipakai model.</p>
+                    </AppCard>
+                    <AppCard className="p-4 sm:p-5">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-rose-500">Rejected</p>
+                      <p className="mt-2 text-3xl font-black text-rose-600">{learningMemoryStats.rejected}</p>
+                      <p className="mt-2 text-sm text-slate-500">Tidak masuk ke memori aktif prediksi.</p>
+                    </AppCard>
+                  </section>
+
+                  <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
+                    <AppCard className="p-4 sm:p-5">
+                      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                        <div>
+                          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Filter</p>
+                          <h3 className="mt-1 text-lg font-black text-slate-900">Pilih status sampel</h3>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {(["Semua", "Approved", "Pending", "Rejected"] as const).map((filter) => (
+                            <button
+                              key={filter}
+                              type="button"
+                              onClick={() => setLearningMemoryFilter(filter)}
+                              className={`rounded-full px-4 py-2 text-xs font-black transition ${
+                                learningMemoryFilter === filter
+                                  ? "bg-emerald-700 text-white"
+                                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              {filter}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_auto]">
+                        <label className="flex items-center gap-3 rounded-2xl border border-[#e4eaee] bg-white px-4 py-3">
+                          <i className="fa-solid fa-magnifying-glass text-slate-400" />
+                          <input
+                            value={learningMemorySearch}
+                            onChange={(event) => setLearningMemorySearch(event.target.value)}
+                            placeholder="Cari label, path, uid, sumber..."
+                            className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
+                          />
+                        </label>
+                        <div className="flex items-center justify-between rounded-2xl border border-[#e4eaee] bg-slate-50 px-4 py-3 text-xs font-black text-slate-500">
+                          <span>{visibleLearningMemoryEntries.length} hasil</span>
+                          <span>{learningMemorySearch.trim() ? "Tersaring" : "Semua data"}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 rounded-[24px] border border-dashed border-[#dfe6ea] bg-slate-50/60 p-4 text-sm leading-6 text-slate-600">
+                        <p className="font-black text-slate-900">Bobot belajar</p>
+                        <p className="mt-1">
+                          Sampel personal diprioritaskan lebih tinggi dari global. Sampel baru juga mendapat bobot lebih kuat, jadi memori
+                          belajar akan lebih cepat menangkap perubahan nyata dari data terakhir.
+                        </p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-2xl bg-white px-3 py-2">
+                            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Global</p>
+                            <p className="mt-1 text-sm font-black text-slate-900">0.74x bobot dasar</p>
+                          </div>
+                          <div className="rounded-2xl bg-white px-3 py-2">
+                            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Personal</p>
+                            <p className="mt-1 text-sm font-black text-slate-900">1.42x bobot dasar</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 space-y-3">
+                        {learningMemoryLoading ? (
+                          <div className="rounded-2xl border border-dashed border-[#dfe6ea] bg-white px-4 py-10 text-center text-sm text-slate-500">
+                            Memuat memori belajar...
+                          </div>
+                        ) : visibleLearningMemoryEntries.length > 0 ? (
+                          visibleLearningMemoryEntries.map((entry) => {
+                            const isBusy = learningMemoryAction === entry.path;
+                            const statusTone =
+                              entry.approvalStatus === "approved"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : entry.approvalStatus === "pending"
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-rose-50 text-rose-700";
+                            return (
+                              <article key={entry.path} className="rounded-[26px] border border-[#e5ece8] bg-white p-4 shadow-[0_14px_28px_-30px_rgba(15,23,42,0.28)]">
+                                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                                  <div className="min-w-0">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                                      {entry.scope === "personal" ? "Personal" : "Global"} · {entry.source}
+                                    </p>
+                                    <h4 className="mt-1 truncate text-lg font-black text-slate-900">
+                                      {entry.labelName || `Label ${entry.label}`}
+                                    </h4>
+                                    <p className="mt-1 text-sm text-slate-500">
+                                      Support {entry.support} · Confidence {(entry.confidence * 100).toFixed(1)}% · Kunci {entry.key}
+                                    </p>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black text-slate-700">
+                                        {entry.scope === "personal" ? "Personal" : "Global"}
+                                      </span>
+                                      <span className="inline-flex rounded-full bg-sky-50 px-3 py-1 text-[11px] font-black text-sky-700">
+                                        {entry.source}
+                                      </span>
+                                      <span
+                                        className={`inline-flex rounded-full px-3 py-1 text-[11px] font-black ${
+                                          entry.approvalStatus === "approved"
+                                            ? "bg-emerald-50 text-emerald-700"
+                                            : entry.approvalStatus === "pending"
+                                              ? "bg-amber-50 text-amber-700"
+                                              : "bg-rose-50 text-rose-700"
+                                        }`}
+                                      >
+                                        {entry.approvalStatus}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <span className={`inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-black ${statusTone}`}>
+                                    {entry.approvalStatus}
+                                  </span>
+                                </div>
+
+                                <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                                  <div className="rounded-2xl bg-slate-50 px-3 py-2">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Dibuat</p>
+                                    <p className="mt-1 text-sm font-black text-slate-900">{formatLocalDateTime(new Date(entry.createdAt))}</p>
+                                  </div>
+                                  <div className="rounded-2xl bg-slate-50 px-3 py-2">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Diubah</p>
+                                    <p className="mt-1 text-sm font-black text-slate-900">{formatLocalDateTime(new Date(entry.updatedAt))}</p>
+                                  </div>
+                                  <div className="rounded-2xl bg-slate-50 px-3 py-2">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">UID</p>
+                                    <p className="mt-1 truncate text-sm font-black text-slate-900">{entry.uid || "-"}</p>
+                                  </div>
+                                  <div className="rounded-2xl bg-slate-50 px-3 py-2">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Approval</p>
+                                    <p className="mt-1 text-sm font-black text-slate-900">{entry.approvalBy || "-"}</p>
+                                  </div>
+                                </div>
+
+                                <div className="mt-3 rounded-2xl border border-dashed border-[#e4eaee] bg-slate-50 px-3 py-2 text-xs leading-6 text-slate-600">
+                                  <p className="font-bold text-slate-700">Path</p>
+                                  <p className="break-all">{entry.path}</p>
+                                  {entry.note ? <p className="mt-2 font-medium text-slate-700">Catatan: {entry.note}</p> : null}
+                                </div>
+
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleLearningMemoryAction(entry, "approve")}
+                                    disabled={isBusy || entry.approvalStatus === "approved"}
+                                    className="rounded-full bg-emerald-700 px-4 py-2 text-xs font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleLearningMemoryAction(entry, "reject")}
+                                    disabled={isBusy || entry.approvalStatus === "rejected"}
+                                    className="rounded-full border border-amber-200 bg-white px-4 py-2 text-xs font-black text-amber-700 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                                  >
+                                    Reject
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleLearningMemoryAction(entry, "delete")}
+                                    disabled={isBusy}
+                                    className="rounded-full border border-rose-200 bg-white px-4 py-2 text-xs font-black text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                                  >
+                                    Hapus
+                                  </button>
+                                </div>
+                              </article>
+                            );
+                          })
+                        ) : (
+                          <EmptyState
+                            icon="fa-brain"
+                            title="Belum ada sampel yang cocok"
+                            description="Coba ganti filter, atau tunggu data baru masuk dari chat, prediksi, atau input manual."
+                          />
+                        )}
+                      </div>
+                    </AppCard>
+
+                    <AppCard className="p-4 sm:p-5">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Ringkasan</p>
+                      <h3 className="mt-1 text-lg font-black text-slate-900">Status memori aktif</h3>
+                      <div className="mt-4 space-y-3 text-sm">
+                        <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2">
+                          <span className="font-medium text-slate-500">Global</span>
+                          <span className="font-black text-slate-900">{learningMemoryStats.global}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2">
+                          <span className="font-medium text-slate-500">Personal</span>
+                          <span className="font-black text-slate-900">{learningMemoryStats.personal}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2">
+                          <span className="font-medium text-slate-500">Filter aktif</span>
+                          <span className="font-black text-slate-900">{learningMemoryFilter}</span>
+                        </div>
+                      </div>
+                      <div className="mt-4 rounded-[22px] border border-dashed border-[#dfe6ea] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbf8_100%)] p-4 text-sm leading-6 text-slate-600">
+                        <p className="font-black text-slate-900">Aturan singkat</p>
+                        <p className="mt-1">
+                          Sampel pending belum dipakai untuk prediksi. Setelah di-approve, sampel langsung masuk ke memori aktif dan ikut
+                          memengaruhi hasil KNN.
+                        </p>
+                      </div>
+                    </AppCard>
+                  </section>
+                </PageContainer>
               ) : null}
 
               {activeMenu === "Dashboard" || activeMenu === "Pengukuran Manual" || activeMenu === "Aktivitas" || activeMenu === "Pola Makan" || activeMenu === "Edukasi" || activeMenu === "Riwayat" || activeMenu === "Pengingat & Alarm" || activeMenu === "Pengaturan" ? null : (
@@ -5988,7 +6449,7 @@ export default function Dashboard({ latest, userDisplayName, userUid, userEmail,
                   label: item.shortLabel,
                   icon: item.icon,
                   active: activeMenu === item.menu,
-                  onClick: () => setActiveMenu(item.menu),
+                  onClick: () => setActiveMenu(item.menu as DashboardMenu),
                 }))}
               />
             </div>

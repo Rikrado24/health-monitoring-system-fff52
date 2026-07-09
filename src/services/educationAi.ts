@@ -36,6 +36,8 @@ const computeBmi = (heightCm?: number, weightKg?: number) => {
   return Number((weightKg / Math.pow(heightCm / 100, 2)).toFixed(1));
 };
 
+const normalizeDelta = (value?: number) => Number(Number(value || 0).toFixed(1));
+
 const normalizeAge = (value?: string | number) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? String(Math.round(parsed)) : "-";
@@ -221,6 +223,16 @@ export function analyzeHealthParameters(data: EducationSourceData): EducationHea
         systolic_bp: parseBloodPressure(data.bloodPressure).systolic,
         diastolic_bp: parseBloodPressure(data.bloodPressure).diastolic,
         steps: Number(data.steps || 0),
+        recent_weight_delta_kg: normalizeDelta(data.recentWeightDeltaKg),
+        recent_bmi_delta: normalizeDelta(data.recentBmiDelta),
+        recent_heart_rate_delta: normalizeDelta(data.recentHeartRateDelta),
+        recent_systolic_delta: normalizeDelta(data.recentSystolicDelta),
+        recent_diastolic_delta: normalizeDelta(data.recentDiastolicDelta),
+        recent_steps_delta: normalizeDelta(data.recentStepsDelta),
+        recent_meal_calorie_delta: normalizeDelta(data.recentMealCalorieDelta),
+        recent_hydration_delta: normalizeDelta(data.recentHydrationDelta),
+        recent_sleep_hours_delta: normalizeDelta(data.recentSleepHoursDelta),
+        recent_activity_calorie_delta: normalizeDelta(data.recentActivityCalorieDelta),
       });
       overallStatus = describePredictionStatus(prediction.healthStatusCode) as EducationHealthAnalysis["overallStatus"];
       overallRecommendation = prediction.recommendation;
@@ -269,6 +281,16 @@ export function buildEducationContext(data: EducationSourceData): EducationConte
     systolic_bp: parseBloodPressure(data.bloodPressure).systolic,
     diastolic_bp: parseBloodPressure(data.bloodPressure).diastolic,
     steps: Number(data.steps || 0),
+    recent_weight_delta_kg: normalizeDelta(data.recentWeightDeltaKg),
+    recent_bmi_delta: normalizeDelta(data.recentBmiDelta),
+    recent_heart_rate_delta: normalizeDelta(data.recentHeartRateDelta),
+    recent_systolic_delta: normalizeDelta(data.recentSystolicDelta),
+    recent_diastolic_delta: normalizeDelta(data.recentDiastolicDelta),
+    recent_steps_delta: normalizeDelta(data.recentStepsDelta),
+    recent_meal_calorie_delta: normalizeDelta(data.recentMealCalorieDelta),
+    recent_hydration_delta: normalizeDelta(data.recentHydrationDelta),
+    recent_sleep_hours_delta: normalizeDelta(data.recentSleepHoursDelta),
+    recent_activity_calorie_delta: normalizeDelta(data.recentActivityCalorieDelta),
   };
   const recentHistorySummary = data.recentHistorySummary?.trim() || "";
   const recentTrendSummary = data.recentTrendSummary?.trim() || "";
@@ -524,6 +546,16 @@ export async function sendEducationQuestionToAI(input: {
           systolic_bp: prediction.input.systolic_bp,
           diastolic_bp: prediction.input.diastolic_bp,
           steps: prediction.input.steps,
+          recent_weight_delta_kg: prediction.input.recent_weight_delta_kg,
+          recent_bmi_delta: prediction.input.recent_bmi_delta,
+          recent_heart_rate_delta: prediction.input.recent_heart_rate_delta,
+          recent_systolic_delta: prediction.input.recent_systolic_delta,
+          recent_diastolic_delta: prediction.input.recent_diastolic_delta,
+          recent_steps_delta: prediction.input.recent_steps_delta,
+          recent_meal_calorie_delta: prediction.input.recent_meal_calorie_delta,
+          recent_hydration_delta: prediction.input.recent_hydration_delta,
+          recent_sleep_hours_delta: prediction.input.recent_sleep_hours_delta,
+          recent_activity_calorie_delta: prediction.input.recent_activity_calorie_delta,
           label: prediction.healthStatusCode,
           label_name: prediction.healthStatusLabel,
           confidence: prediction.confidence,

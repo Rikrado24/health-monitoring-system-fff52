@@ -71,6 +71,16 @@ def build_input_from_args(args: argparse.Namespace) -> dict[str, float]:
             "systolic_bp": args.systolic_bp,
             "diastolic_bp": args.diastolic_bp,
             "steps": args.steps,
+            "recent_weight_delta_kg": args.recent_weight_delta_kg,
+            "recent_bmi_delta": args.recent_bmi_delta,
+            "recent_heart_rate_delta": args.recent_heart_rate_delta,
+            "recent_systolic_delta": args.recent_systolic_delta,
+            "recent_diastolic_delta": args.recent_diastolic_delta,
+            "recent_steps_delta": args.recent_steps_delta,
+            "recent_meal_calorie_delta": args.recent_meal_calorie_delta,
+            "recent_hydration_delta": args.recent_hydration_delta,
+            "recent_sleep_hours_delta": args.recent_sleep_hours_delta,
+            "recent_activity_calorie_delta": args.recent_activity_calorie_delta,
         }
 
     height_cm = normalize_float(raw.get("height_cm"))
@@ -87,6 +97,16 @@ def build_input_from_args(args: argparse.Namespace) -> dict[str, float]:
         "systolic_bp": round(normalize_float(raw.get("systolic_bp")), 1),
         "diastolic_bp": round(normalize_float(raw.get("diastolic_bp")), 1),
         "steps": round(normalize_float(raw.get("steps")), 1),
+        "recent_weight_delta_kg": round(normalize_float(raw.get("recent_weight_delta_kg")), 1),
+        "recent_bmi_delta": round(normalize_float(raw.get("recent_bmi_delta")), 1),
+        "recent_heart_rate_delta": round(normalize_float(raw.get("recent_heart_rate_delta")), 1),
+        "recent_systolic_delta": round(normalize_float(raw.get("recent_systolic_delta")), 1),
+        "recent_diastolic_delta": round(normalize_float(raw.get("recent_diastolic_delta")), 1),
+        "recent_steps_delta": round(normalize_float(raw.get("recent_steps_delta")), 1),
+        "recent_meal_calorie_delta": round(normalize_float(raw.get("recent_meal_calorie_delta")), 1),
+        "recent_hydration_delta": round(normalize_float(raw.get("recent_hydration_delta")), 1),
+        "recent_sleep_hours_delta": round(normalize_float(raw.get("recent_sleep_hours_delta")), 1),
+        "recent_activity_calorie_delta": round(normalize_float(raw.get("recent_activity_calorie_delta")), 1),
     }
 
 
@@ -137,6 +157,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--systolic-bp", dest="systolic_bp", type=float, help="Systolic blood pressure.")
     parser.add_argument("--diastolic-bp", dest="diastolic_bp", type=float, help="Diastolic blood pressure.")
     parser.add_argument("--steps", type=float, help="Daily steps.")
+    parser.add_argument("--recent-weight-delta-kg", dest="recent_weight_delta_kg", type=float, help="Weight delta from recent history.")
+    parser.add_argument("--recent-bmi-delta", dest="recent_bmi_delta", type=float, help="BMI delta from recent history.")
+    parser.add_argument("--recent-heart-rate-delta", dest="recent_heart_rate_delta", type=float, help="Heart rate delta from recent history.")
+    parser.add_argument("--recent-systolic-delta", dest="recent_systolic_delta", type=float, help="Systolic delta from recent history.")
+    parser.add_argument("--recent-diastolic-delta", dest="recent_diastolic_delta", type=float, help="Diastolic delta from recent history.")
+    parser.add_argument("--recent-steps-delta", dest="recent_steps_delta", type=float, help="Steps delta from recent history.")
+    parser.add_argument("--recent-meal-calorie-delta", dest="recent_meal_calorie_delta", type=float, help="Meal calorie delta from recent history.")
+    parser.add_argument("--recent-hydration-delta", dest="recent_hydration_delta", type=float, help="Hydration delta from recent history.")
+    parser.add_argument("--recent-sleep-hours-delta", dest="recent_sleep_hours_delta", type=float, help="Sleep hours delta from recent history.")
+    parser.add_argument("--recent-activity-calorie-delta", dest="recent_activity_calorie_delta", type=float, help="Activity calorie delta from recent history.")
     parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format.")
     return parser.parse_args()
 

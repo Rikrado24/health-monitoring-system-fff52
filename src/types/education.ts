@@ -1,3 +1,5 @@
+import type { HealthPredictionFeatures } from "../services/healthFeatureEngineering";
+
 export type EducationHealthAnalysis = {
   bmiValue: number;
   bmiStatus: "Kurang" | "Normal" | "Overweight" | "Obesitas" | "Belum ada data";
@@ -47,23 +49,23 @@ export type EducationSourceData = {
   recentHistorySummary?: string;
   recentTrendSummary?: string;
   prioritySummary?: string;
+  recentWeightDeltaKg?: number;
+  recentBmiDelta?: number;
+  recentHeartRateDelta?: number;
+  recentSystolicDelta?: number;
+  recentDiastolicDelta?: number;
+  recentStepsDelta?: number;
+  recentMealCalorieDelta?: number;
+  recentHydrationDelta?: number;
+  recentSleepHoursDelta?: number;
+  recentActivityCalorieDelta?: number;
   recentMeasurementSummary?: string;
   recentActivitySummary?: string;
   recentNutritionSummary?: string;
   latestMeasurementAt?: string;
 };
 
-export type EducationPredictionInput = {
-  age: number;
-  gender: number;
-  height_cm: number;
-  weight_kg: number;
-  bmi: number;
-  heart_rate: number;
-  systolic_bp: number;
-  diastolic_bp: number;
-  steps: number;
-};
+export type EducationPredictionInput = HealthPredictionFeatures;
 
 export type EducationPromptContext = {
   patientName: string;
